@@ -1,0 +1,29 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #3b82f6;
+  color: #ffffff;
+  transition: background 150ms ease;
+}
+
+.button:hover {
+  background: #2563eb;
+}
+
+.secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.small {
+  padding: 6px 10px;
+  font-size: 12px;
+}

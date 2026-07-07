@@ -1,0 +1,20 @@
+{
+  "name": "@ce/host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local HTTP + WebSocket server that wraps @ce/core for the web gallery. Reads target projects read-only.",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ce/core": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13"
+  }
+}

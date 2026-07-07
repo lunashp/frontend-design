@@ -1,0 +1,77 @@
+/*
+ * Design tokens — "precision workbench" direction.
+ * Blue-graphite ink chrome (not pure black), monospace-forward metadata,
+ * taxonomy hues that carry classification meaning.
+ */
+
+:root {
+  /* Ink chrome — blue-leaning graphite, layered surfaces */
+  --bg: oklch(19% 0.018 264);
+  --bg-grid: oklch(23% 0.02 264);
+  --surface: oklch(23% 0.019 264);
+  --surface-2: oklch(27% 0.02 264);
+  --surface-3: oklch(31% 0.021 264);
+  --line: oklch(34% 0.02 264);
+  --line-strong: oklch(42% 0.025 264);
+
+  --text: oklch(95% 0.008 264);
+  --text-dim: oklch(72% 0.017 264);
+  --text-faint: oklch(58% 0.018 264);
+
+  /* Single interactive accent — signal cyan, used sparingly */
+  --accent: oklch(80% 0.13 205);
+  --accent-strong: oklch(72% 0.15 210);
+  --accent-ink: oklch(22% 0.04 220);
+
+  /* Taxonomy = the semantic color system (atomic ranks) */
+  --rank-atom: oklch(80% 0.12 200);
+  --rank-molecule: oklch(82% 0.15 150);
+  --rank-organism: oklch(84% 0.14 85);
+  --rank-page: oklch(78% 0.15 330);
+
+  /* State */
+  --danger: oklch(70% 0.17 25);
+  --warn: oklch(82% 0.15 85);
+  --ok: oklch(82% 0.15 150);
+
+  /* Type */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  --text-3xl: clamp(2.5rem, 1.5rem + 3.5vw, 4rem);
+
+  /* Spacing — deliberate rhythm, not uniform padding */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+  --space-10: 4.5rem;
+
+  /* Radii — varied by element role */
+  --radius-chip: 5px;
+  --radius-input: 8px;
+  --radius-card: 14px;
+  --radius-pill: 999px;
+
+  /* Depth */
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 6px 20px -6px oklch(0% 0 0 / 0.45);
+  --shadow-lg: 0 24px 60px -18px oklch(0% 0 0 / 0.6);
+  --glow-accent: 0 0 0 1px oklch(80% 0.13 205 / 0.4), 0 8px 30px -10px oklch(80% 0.13 205 / 0.35);
+
+  /* Motion */
+  --dur-fast: 130ms;
+  --dur: 240ms;
+  --dur-slow: 520ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}

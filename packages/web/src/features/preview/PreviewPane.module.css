@@ -1,0 +1,107 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.state,
+.error {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-card);
+}
+.error {
+  color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 30%, transparent);
+}
+
+.badge {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.badgeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.badge[data-tone='ok'] .badgeDot {
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+}
+.badge[data-tone='warn'] .badgeDot {
+  background: var(--warn);
+  box-shadow: 0 0 8px var(--warn);
+}
+.badge[data-tone='danger'] .badgeDot {
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+}
+.badgeLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.badgeBlurb {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+.codeOnly {
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.deps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.depChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.dep {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 4px 3px 9px;
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.depVer {
+  padding: 1px 6px;
+  border-radius: var(--radius-chip);
+  color: var(--accent);
+  background: var(--accent-ink);
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@ce/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server (P5) wrapping @ce/core for agent-driven scan/port/customize. Sibling of @ce/host.",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ce/core": "workspace:*"
+  }
+}
