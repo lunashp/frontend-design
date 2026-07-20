@@ -4,11 +4,13 @@
  * thin: it maps requests to engine calls and serializes the results.
  */
 
+import * as path from 'node:path';
 import http from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { createLogger, type ProgressEvent } from '@ce/core';
-import { sendJson, sendError, handlePreflight, readJsonBody } from './http-util.js';
+import { sendJson, sendError, sendHtml, handlePreflight, readJsonBody } from './http-util.js';
 import { SessionStore } from './session-store.js';
+import { renderPreviewHtml } from './bundle-preview.js';
 
 export interface HostOptions {
   readonly port: number;
@@ -22,6 +24,10 @@ export interface Host {
   close(): Promise<void>;
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'));
+}
+
 export function createHost(options: HostOptions): Host {
   const store = new SessionStore(options.workspaceRoot);
   const clients = new Set<WebSocket>();
@@ -31,6 +37,19 @@ export function createHost(options: HostOptions): Host {
     for (const ws of clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg);
     }
+  };
+
+  // Bundled preview HTML, keyed by `${resolvedProject}::${id}`. Cleared on scan
+  // so a re-scan yields fresh previews. Bounded (LRU by insertion order) so a
+  // gallery-wide sweep can't accumulate hundreds of multi-MB docs and OOM.
+  const PREVIEW_CACHE_MAX = 40;
+  const previewCache = new Map<string, string>();
+  const cachePreview = (key: string, html: string): void => {
+    if (previewCache.size >= PREVIEW_CACHE_MAX) {
+      const oldest = previewCache.keys().next().value;
+      if (oldest !== undefined) previewCache.delete(oldest);
+    }
+    previewCache.set(key, html);
   };
 
   const server = http.createServer((req, res) => {
@@ -50,12 +69,13 @@ export function createHost(options: HostOptions): Host {
     }
 
     if (route === 'POST /api/scan') {
-      const body = await readJsonBody<{ path?: string }>(req);
+      const body = await readJsonBody<{ path?: string; force?: boolean }>(req);
       const projectPath = body.path ?? options.defaultProject;
       if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
       const logger = createLogger({ onProgress: broadcast });
+      previewCache.clear();
       try {
-        const result = await store.scan(projectPath, logger);
+        const result = await store.scan(projectPath, logger, { force: body.force === true });
         return sendJson(res, 200, result);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Scan failed';
@@ -77,6 +97,50 @@ export function createHost(options: HostOptions): Host {
         const message = err instanceof Error ? err.message : 'Artifact build failed';
         const code = (err as { code?: string }).code ?? 'ARTIFACT_FAILED';
         return sendError(res, 422, message, code);
+      }
+    }
+
+    // Self-contained preview: bundle the component locally (no external CDN) and
+    // serve an HTML doc the web app iframes. GET so an <iframe src> can load it.
+    if (req.method === 'GET' && url.pathname === '/api/preview') {
+      const projectPath = url.searchParams.get('path') ?? options.defaultProject;
+      const id = url.searchParams.get('id');
+      if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
+      if (!id) return sendError(res, 400, 'Missing "id"', 'MISSING_ID');
+
+      const cacheKey = `${path.resolve(projectPath)}::${id}`;
+      const cached = previewCache.get(cacheKey);
+      if (cached) return sendHtml(res, 200, cached);
+
+      const logger = createLogger({ onProgress: broadcast });
+      try {
+        const artifact = await store.getArtifact(projectPath, id, logger);
+        // Code-only components (giant page subtrees, server-only modules) have an
+        // incomplete or unbundlable spec — the UI never previews them. Short-circuit
+        // instead of feeding a huge/broken bundle to esbuild (which can exhaust it).
+        if (artifact.sandpack.renderability === 'code-only') {
+          return sendHtml(
+            res,
+            200,
+            `<!doctype html><meta charset="utf-8"><body style="font:13px/1.5 ui-monospace,monospace;color:#7a7f87;padding:16px">` +
+              `This component can’t be bundled for an isolated preview (too many files or a server-only runtime). See the Portable tab for its code.</body>`,
+          );
+        }
+        const html = await renderPreviewHtml({
+          targetRoot: path.resolve(projectPath),
+          spec: artifact.sandpack,
+        });
+        cachePreview(cacheKey, html);
+        return sendHtml(res, 200, html);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Preview build failed';
+        // Render the error INTO the iframe so the user sees why, not a blank frame.
+        return sendHtml(
+          res,
+          200,
+          `<!doctype html><meta charset="utf-8"><body style="font:13px/1.5 ui-monospace,monospace;color:#b4232c;padding:16px">` +
+            `<strong>Preview build failed</strong><pre style="white-space:pre-wrap">${escapeHtml(message)}</pre></body>`,
+        );
       }
     }
 

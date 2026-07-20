@@ -16,7 +16,9 @@ async function tmpProject(files: Record<string, string>): Promise<string> {
   await fs.mkdir(dir, { recursive: true });
   for (const [name, content] of Object.entries(files)) {
     if (name === '__id') continue;
-    await fs.writeFile(path.join(dir, name), content);
+    const file = path.join(dir, name);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, content);
   }
   return dir;
 }
@@ -73,5 +75,59 @@ describe('loadProject', () => {
     });
     const p = await loadProject({ rootPath: dir }, { workspaceRoot: WS });
     expect(p.framework).toBe('react');
+  });
+
+  it('takes src dirs from tsconfig include, beyond the built-in candidates', async () => {
+    const dir = await tmpProject({
+      __id: 'include',
+      'package.json': JSON.stringify({ name: 'n', dependencies: { next: '^16.0.0' } }),
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: { baseUrl: '.' },
+        include: [
+          'next-env.d.ts',
+          'app/**/*.tsx',
+          'src/**/*.tsx',
+          'shared/**/*.tsx',
+          'i18n.ts',
+          '.next/types/**/*.ts',
+        ],
+      }),
+      'app/page.tsx': 'export default function P() { return null; }',
+      'src/a.tsx': 'export const A = () => null;',
+      'shared/ui/atoms/Button.tsx': 'export const Button = () => null;',
+      '.next/types/x.ts': 'export {};',
+    });
+    const p = await loadProject({ rootPath: dir }, { workspaceRoot: WS });
+    const rel = p.srcDirs.map((d) => path.relative(path.resolve(dir), d)).sort();
+
+    // `shared` is the whole point: it is not a built-in candidate, but the
+    // tsconfig names it, so a design system living there must be scanned.
+    expect(rel).toEqual(['app', 'shared', 'src']);
+  });
+
+  it('ignores include entries that are globs, files, or dot-dirs', async () => {
+    const dir = await tmpProject({
+      __id: 'glob',
+      'package.json': JSON.stringify({ name: 'g', dependencies: { react: '^19.0.0' } }),
+      'tsconfig.json': JSON.stringify({ include: ['**/*.ts', '**/*.tsx'] }),
+      'src/a.tsx': 'export const A = () => null;',
+      'components/b.tsx': 'export const B = () => null;',
+    });
+    const p = await loadProject({ rootPath: dir }, { workspaceRoot: WS });
+    const rel = p.srcDirs.map((d) => path.relative(path.resolve(dir), d)).sort();
+
+    // No include entry names a concrete dir, so the built-in candidates stand in.
+    expect(rel).toEqual(['components', 'src']);
+  });
+
+  it('falls back to built-in candidates when tsconfig has no include', async () => {
+    const dir = await tmpProject({
+      __id: 'noinclude',
+      'package.json': JSON.stringify({ name: 'x', dependencies: { react: '^19.0.0' } }),
+      'tsconfig.json': JSON.stringify({ compilerOptions: { baseUrl: '.' } }),
+      'src/a.tsx': 'export const A = () => null;',
+    });
+    const p = await loadProject({ rootPath: dir }, { workspaceRoot: WS });
+    expect(p.srcDirs.map((d) => path.relative(path.resolve(dir), d))).toEqual(['src']);
   });
 });

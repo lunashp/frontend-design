@@ -20,11 +20,16 @@ export async function getHealth(): Promise<Health> {
   return parseOrThrow<Health>(await fetch('/api/health'));
 }
 
-export async function scanProject(path?: string): Promise<ScanResult> {
+export interface ScanOptions {
+  /** Re-run the engine even if the host has a cached result for this project. */
+  force?: boolean;
+}
+
+export async function scanProject(path?: string, options: ScanOptions = {}): Promise<ScanResult> {
   const res = await fetch('/api/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(path ? { path } : {}),
+    body: JSON.stringify({ ...(path ? { path } : {}), ...(options.force ? { force: true } : {}) }),
   });
   return parseOrThrow<ScanResult>(res);
 }

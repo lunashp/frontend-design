@@ -13,7 +13,8 @@ const byName = new Map<string, string>();
 
 beforeAll(async () => {
   session = await EngineSession.create({ rootPath: FIXTURE }, { workspaceRoot: WS });
-  for (const c of session.scan().components) byName.set(c.descriptor.name, c.descriptor.id);
+  const scan = await session.scan();
+  for (const c of scan.components) byName.set(c.descriptor.name, c.descriptor.id);
 });
 
 afterAll(async () => {

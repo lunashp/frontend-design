@@ -17,7 +17,9 @@ export function ScanForm({ controller }: { controller: ScanController }) {
       className={styles.form}
       onSubmit={(e) => {
         e.preventDefault();
-        scan(path.trim() || undefined);
+        // Submitting is a deliberate act — always re-read the project from disk,
+        // so "Re-scan" picks up edits the cached result predates.
+        scan(path.trim() || undefined, { force: true });
       }}
     >
       <label className={styles.field}>

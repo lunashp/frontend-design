@@ -1,11 +1,9 @@
-import { lazy, Suspense } from 'react';
 import type { ComponentArtifact } from '../../api/types.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
+import { LocalPreview } from '../preview/LocalPreview.js';
 import { DepsInstall } from './DepsInstall.js';
 import { FileBrowser } from './FileBrowser.js';
 import styles from './PortablePane.module.css';
-
-const SandboxView = lazy(() => import('../preview/SandboxView.js'));
 
 function allFilesDump(files: Record<string, string>): string {
   return Object.entries(files)
@@ -13,7 +11,13 @@ function allFilesDump(files: Record<string, string>): string {
     .join('\n\n');
 }
 
-export function PortablePane({ artifact }: { artifact: ComponentArtifact; projectRoot: string }) {
+export function PortablePane({
+  artifact,
+  projectRoot,
+}: {
+  artifact: ComponentArtifact;
+  projectRoot: string;
+}) {
   const { bundle, sandpack } = artifact;
   const fileCount = Object.keys(bundle.files).length;
 
@@ -46,13 +50,11 @@ export function PortablePane({ artifact }: { artifact: ComponentArtifact; projec
         <span className="eyebrow">Preview of the copied code</span>
         {sandpack.renderability === 'code-only' ? (
           <div className={styles.codeOnly}>
-            The extracted code can’t be rendered live in the sandbox (see notes on the Preview tab),
-            but the files above are copy-ready.
+            The extracted code can’t be rendered in an isolated preview (see notes on the Preview
+            tab), but the files above are copy-ready.
           </div>
         ) : (
-          <Suspense fallback={<div className={styles.loading}>Loading preview…</div>}>
-            <SandboxView spec={sandpack} />
-          </Suspense>
+          <LocalPreview projectRoot={projectRoot} id={artifact.descriptor.id} />
         )}
       </section>
 

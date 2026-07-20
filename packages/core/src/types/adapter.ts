@@ -77,5 +77,7 @@ export interface FrameworkAdapter {
   generateProviderStubs(
     descriptor: ComponentDescriptor,
     program: FrameworkProgram,
+    /** The bundle's external deps, so stubs match what the sandbox installs. */
+    deps: Readonly<Record<string, string>>,
   ): ProviderStubResult;
 }

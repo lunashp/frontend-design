@@ -28,6 +28,11 @@ export interface EngineSessionOptions {
   readonly registry?: AdapterRegistry;
 }
 
+/** Hand the event loop back so queued I/O can run. See `scan()`. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export class EngineSession {
   private descriptorsById = new Map<string, ComponentDescriptor>();
   private summariesById = new Map<string, ComponentSummary>();
@@ -56,8 +61,16 @@ export class EngineSession {
     return new EngineSession(loaded, adapter, program, logger);
   }
 
-  /** Discover + classify all components (P1). Caches descriptors for later phases. */
-  scan(): ScanResult {
+  /**
+   * Discover + classify all components (P1). Caches descriptors for later phases.
+   *
+   * Async only to yield between components: prop extraction is synchronous and
+   * is ~99% of a scan (527s of 530s on a 1133-component project), so a plain
+   * loop pins the event loop for the whole run. The process would then serve
+   * nothing — not even a health check — and progress events would queue up and
+   * flush only once the scan was already over.
+   */
+  async scan(): Promise<ScanResult> {
     const descriptors = this.adapter.discoverComponents(this.program);
     this.descriptorsById = new Map(descriptors.map((d) => [d.id, d]));
 
@@ -65,7 +78,7 @@ export class EngineSession {
     const components: ComponentSummary[] = [];
     this.summariesById = new Map();
 
-    descriptors.forEach((descriptor, i) => {
+    for (const [i, descriptor] of descriptors.entries()) {
       try {
         const propModel = this.adapter.extractProps(descriptor, this.program);
         const signals = this.adapter.extractSignals(descriptor, this.program);
@@ -81,7 +94,8 @@ export class EngineSession {
         message: descriptor.name,
         ratio: (i + 1) / Math.max(descriptors.length, 1),
       });
-    });
+      await yieldToEventLoop();
+    }
 
     return {
       artifactVersion: ARTIFACT_VERSION,
@@ -125,7 +139,11 @@ export class EngineSession {
     const tokenModel = tok.tokenModel;
 
     const sampleProps = generateSampleProps(summary.propModel, summary.descriptor);
-    const providers = this.adapter.generateProviderStubs(summary.descriptor, this.program);
+    const providers = this.adapter.generateProviderStubs(
+      summary.descriptor,
+      this.program,
+      bundle.externalDeps,
+    );
     const entry = this.adapter.buildEntry({
       descriptor: summary.descriptor,
       bundle,

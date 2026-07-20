@@ -145,7 +145,7 @@ export function Inspector({
           ) : artifactState.status === 'error' || !artifactState.artifact ? (
             <div className={styles.loadError}>{artifactState.error ?? 'Failed to build artifact.'}</div>
           ) : tab === 'Preview' ? (
-            <PreviewPane artifact={artifactState.artifact} />
+            <PreviewPane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : tab === 'Portable' ? (
             <PortablePane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : (

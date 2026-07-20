@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { connectProgress, getHealth, scanProject } from '../../api/client.js';
+import { connectProgress, getHealth, scanProject, type ScanOptions } from '../../api/client.js';
 import type { ProgressEvent, ScanResult } from '../../api/types.js';
 
 export type ScanStatus = 'idle' | 'scanning' | 'ready' | 'error';
@@ -10,7 +10,7 @@ export interface ScanController {
   error: string | null;
   progress: ProgressEvent | null;
   defaultProject: string | null;
-  scan: (path?: string) => void;
+  scan: (path?: string, options?: ScanOptions) => void;
 }
 
 export function useScan(): ScanController {
@@ -32,11 +32,11 @@ export function useScan(): ScanController {
     };
   }, []);
 
-  const scan = useCallback((path?: string) => {
+  const scan = useCallback((path?: string, options?: ScanOptions) => {
     setStatus('scanning');
     setError(null);
     setProgress(null);
-    scanProject(path)
+    scanProject(path, options)
       .then((r) => {
         setResult(r);
         setStatus('ready');

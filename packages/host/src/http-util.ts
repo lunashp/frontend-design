@@ -18,6 +18,11 @@ export function sendError(res: ServerResponse, status: number, message: string, 
   sendJson(res, status, { error: { message, code: code ?? 'ERROR' } });
 }
 
+export function sendHtml(res: ServerResponse, status: number, html: string): void {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', ...CORS_HEADERS });
+  res.end(html);
+}
+
 export function handlePreflight(res: ServerResponse): void {
   res.writeHead(204, CORS_HEADERS);
   res.end();

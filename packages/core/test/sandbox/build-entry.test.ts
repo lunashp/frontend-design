@@ -36,16 +36,18 @@ function entryFor(d: ComponentDescriptor): string {
 }
 
 describe('buildReactEntry', () => {
-  it('binds a named export by its EXPORT name, not the display name', () => {
+  it('resolves a named export by its EXPORT name (not the display name)', () => {
     const entry = entryFor(descriptor({ name: 'Inner', exportName: 'Card' }));
-    expect(entry).toContain("import { Card as __Component } from './src/Card';");
+    expect(entry).toContain("import * as __ns from './src/Card';");
+    expect(entry).toContain('"Card"');
     expect(entry).not.toContain('{ Inner }');
     expect(entry).toContain('<__Component {...props} />');
   });
 
-  it('imports a default export directly', () => {
-    const entry = entryFor(descriptor({ name: 'Card', exportName: 'default', isDefaultExport: true }));
-    expect(entry).toContain("import __Component from './src/Card';");
+  it('falls back to the default export when the named binding is absent', () => {
+    // `export default <named const>` is reported under the name, not `default`.
+    const entry = entryFor(descriptor({ name: 'Card', exportName: 'Card', isDefaultExport: false }));
+    expect(entry).toMatch(/__ns as any\)\.default/);
     expect(entry).toContain('<__Component {...props} />');
   });
 
@@ -54,5 +56,14 @@ describe('buildReactEntry', () => {
     expect(entry).toContain("import '/tokens.css';");
     expect(entry).toContain('"title": "Hello"');
     expect(entry).toContain('createRoot');
+  });
+
+  it('wraps the mount in an error boundary so a render throw shows a fallback, not a blank', () => {
+    const entry = entryFor(descriptor({}));
+    // A component that dereferences data it was not given throws at render;
+    // without a boundary React unmounts the whole tree and the preview is blank.
+    expect(entry).toMatch(/componentDidCatch|getDerivedStateFromError/);
+    expect(entry).toMatch(/<__ErrorBoundary>/);
+    expect(entry).toMatch(/<\/__ErrorBoundary>/);
   });
 });

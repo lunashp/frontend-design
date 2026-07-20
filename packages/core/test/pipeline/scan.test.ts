@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { scanProject } from '../../src/pipeline/scan-project.js';
+import { EngineSession } from '../../src/pipeline/session.js';
 import type { ScanResult } from '../../src/types/artifact.js';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/simple-react');
@@ -57,10 +58,41 @@ describe('scanProject (simple-react fixture)', () => {
     expect(userPanel.classification.contextDependencyScore).toBeGreaterThan(0);
   });
 
+  it('catalogues a named+default export of one declaration only once', async () => {
+    const r = await getResult();
+    const badges = r.components.filter((c) => c.descriptor.name === 'Badge');
+    expect(badges).toHaveLength(1);
+    // The named export is kept: it ports as an explicit `import { Badge }`.
+    expect(badges[0]!.descriptor.exportName).toBe('Badge');
+    expect(badges[0]!.descriptor.isDefaultExport).toBe(false);
+  });
+
   it('detects the color-typed prop on Badge as a color control', async () => {
     const r = await getResult();
     const badge = r.components.find((c) => c.descriptor.name === 'Badge')!;
     const color = badge.propModel.props.find((p) => p.name === 'color');
     expect(color?.kind).toBe('color');
+  });
+
+  it('yields to the event loop while classifying', async () => {
+    const session = await EngineSession.create({ rootPath: FIXTURE }, { workspaceRoot: WS });
+
+    // Count event-loop turns that happen *while* the scan runs. A fully
+    // synchronous classify loop lets it turn zero times — which is why the host
+    // could not answer /api/health, and why queued WS progress frames only
+    // flushed once the scan was already over.
+    let scanning = true;
+    let turns = 0;
+    const tick = (): void => {
+      if (!scanning) return;
+      turns += 1;
+      setImmediate(tick);
+    };
+    setImmediate(tick);
+
+    await session.scan();
+    scanning = false;
+
+    expect(turns).toBeGreaterThan(1);
   });
 });

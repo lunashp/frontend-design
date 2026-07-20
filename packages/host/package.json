@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ce/core": "workspace:*",
+    "esbuild": "0.28.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

@@ -57,10 +57,38 @@ describe('generateSampleProps', () => {
     expect('subtitle' in out).toBe(false);
   });
 
-  it('skips function/unknown props even when required', () => {
+  it('skips function props (JSON cannot carry them; undefined is safe at render)', () => {
     const out = gen([
-      prop({ name: 'onClick', kind: 'unknown', required: true }),
-      prop({ name: 'data', kind: 'unknown', required: true }),
+      prop({ name: 'onClick', kind: 'unknown', tsType: '() => void', required: true }),
+      prop({ name: 'onSelect', kind: 'unknown', tsType: '(id: string) => void', required: true }),
+    ]);
+    expect(Object.keys(out)).toHaveLength(0);
+  });
+
+  it('fills a required array prop with [] so .map/.length do not throw', () => {
+    const out = gen([
+      prop({ name: 'items', kind: 'unknown', tsType: 'Item[]', required: true }),
+      prop({ name: 'rows', kind: 'unknown', tsType: 'Array<Row>', required: true }),
+      prop({ name: 'cols', kind: 'unknown', tsType: 'ReadonlyArray<Col>', required: true }),
+    ]);
+    expect(out.items).toEqual([]);
+    expect(out.rows).toEqual([]);
+    expect(out.cols).toEqual([]);
+  });
+
+  it('fills a required object/opaque prop with {} so shallow access is undefined, not a throw', () => {
+    const out = gen([
+      prop({ name: 'data', kind: 'unknown', tsType: 'DateGroup', required: true }),
+      prop({ name: 'map', kind: 'unknown', tsType: 'Record<string, Foo[]>', required: true }),
+    ]);
+    expect(out.data).toEqual({});
+    expect(out.map).toEqual({});
+  });
+
+  it('does not fill OPTIONAL complex props (keep the component near its real defaults)', () => {
+    const out = gen([
+      prop({ name: 'extra', kind: 'unknown', tsType: 'Foo[]', required: false }),
+      prop({ name: 'meta', kind: 'unknown', tsType: 'Meta', required: false }),
     ]);
     expect(Object.keys(out)).toHaveLength(0);
   });

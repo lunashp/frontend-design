@@ -1,9 +1,7 @@
-import { lazy, Suspense } from 'react';
 import type { ComponentArtifact, Renderability } from '../../api/types.js';
 import { DepsList } from './DepsList.js';
+import { LocalPreview } from './LocalPreview.js';
 import styles from './PreviewPane.module.css';
-
-const SandboxView = lazy(() => import('./SandboxView.js'));
 
 const RENDERABILITY: Record<Renderability, { label: string; tone: string; blurb: string }> = {
   full: { label: 'Isolated render', tone: 'ok', blurb: 'Renders cleanly with no app context.' },
@@ -19,7 +17,13 @@ const RENDERABILITY: Record<Renderability, { label: string; tone: string; blurb:
   },
 };
 
-export function PreviewPane({ artifact }: { artifact: ComponentArtifact }) {
+export function PreviewPane({
+  artifact,
+  projectRoot,
+}: {
+  artifact: ComponentArtifact;
+  projectRoot: string;
+}) {
   const spec = artifact.sandpack;
   const meta = RENDERABILITY[spec.renderability];
 
@@ -33,13 +37,12 @@ export function PreviewPane({ artifact }: { artifact: ComponentArtifact }) {
 
       {spec.renderability === 'code-only' ? (
         <div className={styles.codeOnly}>
-          This component can’t run live in the sandbox. Its portable code and dependency list are
-          on the Portable tab.
+          This component can’t be bundled for an isolated preview (it composes too many files or
+          depends on a server-only runtime). Its portable code and dependency list are on the
+          Portable tab.
         </div>
       ) : (
-        <Suspense fallback={<div className={styles.state}>Loading sandbox…</div>}>
-          <SandboxView spec={spec} />
-        </Suspense>
+        <LocalPreview projectRoot={projectRoot} id={artifact.descriptor.id} />
       )}
 
       {spec.notes.length > 0 && (

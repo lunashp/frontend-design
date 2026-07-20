@@ -9,9 +9,9 @@ import * as path from 'node:path';
 import type { Framework, LoadedProject, PackageInfo, ProjectRef } from '../types/project.js';
 import { ProjectLoadError } from '../util/errors.js';
 import { createWorkspace } from '../util/workspace.js';
-import { readTsAliases } from './resolve-paths.js';
+import { readTsAliases, readTsSrcDirs } from './resolve-paths.js';
 
-/** Candidate source directories, in priority order. */
+/** Fallback source directories, in priority order, when tsconfig names none. */
 const SRC_CANDIDATES = ['src', 'app', 'components', 'lib', 'pages'];
 
 export interface LoadProjectOptions {
@@ -51,7 +51,9 @@ function findTsconfig(rootPath: string): string | null {
   return null;
 }
 
-function findSrcDirs(rootPath: string): string[] {
+function findSrcDirs(rootPath: string, tsconfigPath: string | null): string[] {
+  const declared = readTsSrcDirs(tsconfigPath);
+  if (declared.length > 0) return declared;
   const dirs = SRC_CANDIDATES.map((d) => path.join(rootPath, d)).filter((d) => existsSync(d));
   return dirs.length > 0 ? dirs : [rootPath];
 }
@@ -69,7 +71,7 @@ export async function loadProject(
   const tsconfigPath = findTsconfig(rootPath);
   const pathAliases = readTsAliases(tsconfigPath);
   const framework = detectFramework(pkg);
-  const srcDirs = findSrcDirs(rootPath);
+  const srcDirs = findSrcDirs(rootPath, tsconfigPath);
 
   const workspaceRoot = options.workspaceRoot ?? path.join(process.cwd(), '.workspace');
   const workspace = await createWorkspace({ workspaceRoot, projectRoot: rootPath });

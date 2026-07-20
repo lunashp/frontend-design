@@ -16,6 +16,26 @@ function parseBool(value: string | undefined): boolean {
   return value === 'true';
 }
 
+const ARRAY_TYPE = /(\[\]\s*$)|(^(readonly\s+)?Array<)|(^ReadonlyArray<)/;
+const FUNCTION_TYPE = /=>|\bFunction\b/;
+
+/**
+ * A value for a required prop the control model classified as `unknown` (an
+ * object, array, or function). The component will dereference it while
+ * rendering, so leaving it `undefined` throws and the preview goes blank.
+ *
+ * Returns `undefined` for function types: JSON can't carry a function, and an
+ * unset event handler is harmless at render (it fires on interaction, not mount).
+ * Arrays get `[]` so `.map`/`.length` are safe; everything else gets `{}` so a
+ * shallow read is merely `undefined`. Deeply-nested data (`d.user.name`) can
+ * still throw — that shape can't be invented without the real data.
+ */
+function valueForRequiredUnknown(tsType: string): unknown {
+  if (FUNCTION_TYPE.test(tsType)) return undefined;
+  if (ARRAY_TYPE.test(tsType.trim())) return [];
+  return {};
+}
+
 function valueForPropKind(prop: PropControl, descriptor: ComponentDescriptor): unknown {
   switch (prop.kind) {
     case 'node':
@@ -42,7 +62,15 @@ export function generateSampleProps(
   const out: Record<string, unknown> = {};
 
   for (const prop of propModel.props) {
-    if (prop.kind === 'unknown') continue; // functions and opaque props
+    if (prop.kind === 'unknown') {
+      // Fill only REQUIRED opaque props (objects/arrays); the component will
+      // dereference them at render. Optionals keep their real defaults.
+      if (prop.required) {
+        const value = valueForRequiredUnknown(prop.tsType);
+        if (value !== undefined) out[prop.name] = value;
+      }
+      continue;
+    }
 
     const isChildren = prop.name === 'children' || prop.kind === 'node';
     // Fill children/nodes and enums always (shows variety); other optionals keep
