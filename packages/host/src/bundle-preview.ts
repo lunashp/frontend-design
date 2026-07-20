@@ -67,6 +67,13 @@ export async function renderPreviewHtml(input: PreviewInput): Promise<string> {
       nodePaths: [nodeModules],
       plugins: [sandboxRootPlugin(dir)],
       define: { 'process.env.NODE_ENV': '"development"' },
+      // Target code (api config, stores) often reads `process.env.*` or `global`
+      // at module top level; neither exists in the browser. Shim them so the
+      // module loads instead of throwing `process is not defined`. Env reads
+      // resolve to undefined — fine for a data-less preview.
+      banner: {
+        js: `globalThis.process=globalThis.process||{env:{NODE_ENV:'development'},platform:'browser',cwd:function(){return '/'}};globalThis.global=globalThis.global||globalThis;`,
+      },
       logLevel: 'silent',
     });
 
