@@ -305,8 +305,23 @@ export function resolvePortability(
   entry: ComponentDescriptor,
   loaded: LoadedProject,
 ): PortableBundle {
-  const graph = buildImportGraph(project, entry.filePath, loaded);
+  // Pass 1: learn the component's external deps so we know whether to also
+  // bundle the app's real theme (MUI) and message catalogue (next-intl) for a
+  // faithful preview instead of placeholder colors/labels.
+  const firstPass = buildImportGraph(project, entry.filePath, loaded);
+  const usesMui = [...firstPass.externals].some((d) => d === '@mui/material' || d.startsWith('@mui/'));
+  const usesIntl = firstPass.externals.has('next-intl');
+
+  const themeRoot = usesMui && loaded.themeRef ? loaded.themeRef.file : null;
+  const messagesFile = usesIntl && loaded.messagesFile ? loaded.messagesFile : null;
+
+  // Pass 2 with the theme as an extra root, so its subtree is bundled too.
+  const graph = themeRoot
+    ? buildImportGraph(project, entry.filePath, loaded, [themeRoot])
+    : firstPass;
+
   const included = new Set<string>([...graph.localFiles, ...graph.styleFiles]);
+  if (messagesFile) included.add(messagesFile);
   const base = commonBaseDir([...included]);
   const rofs = createReadOnlyFs(loaded.rootPath);
 
@@ -364,6 +379,21 @@ export function resolvePortability(
     warnings.push(`Asset not inlined (P2): ${path.basename(asset)}`);
   }
 
+  // Bundle the real theme / messages so the provider can supply true values.
+  let previewTheme: { path: string; exportName: string } | undefined;
+  if (themeRoot && graph.localFiles.has(themeRoot) && loaded.themeRef) {
+    previewTheme = { path: bundlePathOf(themeRoot, base), exportName: loaded.themeRef.exportName };
+  }
+  let previewMessages: string | undefined;
+  if (messagesFile) {
+    try {
+      files[bundlePathOf(messagesFile, base)] = rofs.readFileSync(messagesFile);
+      previewMessages = bundlePathOf(messagesFile, base);
+    } catch {
+      warnings.push(`Could not read messages file: ${messagesFile}`);
+    }
+  }
+
   const dangling = findDanglingImports(files);
   if (dangling.length > 0) {
     warnings.push(`${dangling.length} unresolved local import(s): ${dangling.slice(0, 3).join(', ')}`);
@@ -376,5 +406,7 @@ export function resolvePortability(
     assets: [],
     warnings,
     incomplete: dangling.length > 0,
+    previewTheme,
+    previewMessages,
   };
 }

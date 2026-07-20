@@ -85,6 +85,8 @@ export function buildImportGraph(
   project: Project,
   entryFile: string,
   loaded: LoadedProject,
+  /** Additional roots to bundle alongside the entry, e.g. the app's theme. */
+  extraRoots: readonly string[] = [],
 ): ImportGraph {
   const localFiles = new Set<string>();
   const styleFiles = new Set<string>();
@@ -93,7 +95,7 @@ export function buildImportGraph(
   const warnings: string[] = [];
 
   const visited = new Set<string>();
-  const queue: string[] = [entryFile];
+  const queue: string[] = [entryFile, ...extraRoots];
 
   while (queue.length > 0) {
     const file = queue.shift() as string;

@@ -27,4 +27,11 @@ export interface PortableBundle {
   readonly warnings: readonly string[];
   /** True when the bundle has unresolved local imports (dropped/truncated files). */
   readonly incomplete?: boolean;
+  /**
+   * The app's real theme, bundled in for a faithful preview. Bundle-relative
+   * path + export name, so the provider can `import { <export> } from <path>`.
+   */
+  readonly previewTheme?: { readonly path: string; readonly exportName: string };
+  /** Bundle-relative path of a bundled i18n message catalogue, if included. */
+  readonly previewMessages?: string;
 }

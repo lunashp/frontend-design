@@ -12,7 +12,7 @@
  * renders (approximate colours) instead of crashing.
  */
 
-import type { ProviderStubResult } from '../../types/adapter.js';
+import type { PreviewContext, ProviderStubResult } from '../../types/adapter.js';
 import type { ComponentDescriptor } from '../../types/component.js';
 import type { ReactProgramHandle } from './ts-program.js';
 
@@ -37,13 +37,8 @@ function usesNextIntl(deps: Readonly<Record<string, string>>): boolean {
   return 'next-intl' in deps;
 }
 
-/**
- * Runtime source (sandbox-side) of a theme whose palette tolerates any lookup.
- * Existing MUI keys pass through; a missing key returns a callable/indexable
- * proxy that coerces to a placeholder colour, so `palette.a.b.c` never throws
- * however deep the app nested its custom tokens.
- */
-const DEFENSIVE_THEME = `const __FALLBACK = '#9aa0a6';
+/** Wrap a base theme's palette so unknown custom tokens degrade, not throw. */
+const PALETTE_GUARD = `const __FALLBACK = '#9aa0a6';
 function __colorProxy() {
   const f = () => __FALLBACK;
   return new Proxy(f, {
@@ -67,15 +62,24 @@ function __wrap(obj) {
     },
   });
 }
-const __base = createTheme();
-const __theme = { ...__base, palette: __wrap(__base.palette) };`;
+const __theme = { ...__baseTheme, palette: __wrap(__baseTheme.palette) };`;
+
+/** Bundle path → relative specifier for an entry-inlined import (entry at root). */
+function rel(bundlePath: string): string {
+  return `.${bundlePath.replace(/\.\w+$/, '')}`;
+}
 
 /**
  * Assemble the provider wrapper from the packages the bundle actually pulls in.
  * Returns NONE when nothing context-bound is present, so a plain component is
- * left unwrapped (and needs no extra sandbox dependency).
+ * left unwrapped (and needs no extra sandbox dependency). When `preview` carries
+ * the app's real theme / messages, they are used for a faithful render; else a
+ * defensive stub keeps the component from crashing (placeholder colors/keys).
  */
-export function buildProviderStub(deps: Readonly<Record<string, string>>): ProviderStubResult {
+export function buildProviderStub(
+  deps: Readonly<Record<string, string>>,
+  preview: PreviewContext = {},
+): ProviderStubResult {
   const mui = usesMui(deps);
   const rq = usesReactQuery(deps);
   const intl = usesNextIntl(deps);
@@ -89,7 +93,20 @@ export function buildProviderStub(deps: Readonly<Record<string, string>>): Provi
   let inner = '{children}';
   if (mui) {
     importLines.push(`import { ThemeProvider, createTheme } from '@mui/material/styles';`);
-    body.push(DEFENSIVE_THEME);
+    if (preview.theme) {
+      // Real app theme → true brand colors. Used AS-IS: it is complete, and the
+      // palette guard must NOT wrap it — the guard returns a truthy proxy for any
+      // missing key, which trips MUI's internal `theme.palette.<x>` existence
+      // checks and corrupts color resolution (renders everything a placeholder).
+      importLines.push(
+        `import { ${preview.theme.exportName} as __theme } from '${rel(preview.theme.path)}';`,
+      );
+    } else {
+      // No real theme: a defensive stub keeps custom-token components from
+      // throwing (placeholder colors) instead of blanking.
+      body.push(`const __baseTheme = createTheme();`);
+      body.push(PALETTE_GUARD);
+    }
     inner = `<ThemeProvider theme={__theme}>${inner}</ThemeProvider>`;
   }
   if (rq) {
@@ -98,13 +115,17 @@ export function buildProviderStub(deps: Readonly<Record<string, string>>): Provi
     inner = `<QueryClientProvider client={__queryClient}>${inner}</QueryClientProvider>`;
   }
   if (intl) {
-    // `useTranslations` throws hard without this provider — it blanks every
-    // translated component. We have no real message catalogue, so swallow the
-    // missing-key error and fall back to the key itself: the component renders
-    // with its i18n keys as visible text instead of crashing.
+    // `useTranslations` throws hard without this provider. With the real message
+    // catalogue the component shows true labels; without it, fall back to the
+    // key so it renders text instead of crashing.
     importLines.push(`import { NextIntlClientProvider } from 'next-intl';`);
+    let msgExpr = '{}';
+    if (preview.messagesPath) {
+      importLines.push(`import __messages from '${rel(preview.messagesPath)}';`);
+      msgExpr = '__messages';
+    }
     inner =
-      `<NextIntlClientProvider locale="en" messages={{}} onError={() => {}} getMessageFallback={({ key }) => key}>` +
+      `<NextIntlClientProvider locale="ko" messages={${msgExpr}} onError={() => {}} getMessageFallback={({ key }) => key}>` +
       inner +
       `</NextIntlClientProvider>`;
   }
@@ -131,6 +152,7 @@ export function generateReactProviderStubs(
   _descriptor: ComponentDescriptor,
   _handle: ReactProgramHandle,
   deps: Readonly<Record<string, string>> = {},
+  preview: PreviewContext = {},
 ): ProviderStubResult {
-  return buildProviderStub(deps);
+  return buildProviderStub(deps, preview);
 }

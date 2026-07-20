@@ -29,6 +29,14 @@ export interface FrameworkProgram {
   readonly handle: unknown;
 }
 
+/** Real theme/messages bundled into a preview for a faithful render. */
+export interface PreviewContext {
+  /** The app's real theme: bundle-relative path + export name. */
+  readonly theme?: { readonly path: string; readonly exportName: string };
+  /** Bundle-relative path of a real i18n message catalogue (JSON). */
+  readonly messagesPath?: string;
+}
+
 /** Generated context providers that wrap the mounted component in the sandbox. */
 export interface ProviderStubResult {
   /** Full source of a `Providers` component file (or empty if none needed). */
@@ -79,5 +87,7 @@ export interface FrameworkAdapter {
     program: FrameworkProgram,
     /** The bundle's external deps, so stubs match what the sandbox installs. */
     deps: Readonly<Record<string, string>>,
+    /** Real theme/messages bundled in for a faithful preview, if available. */
+    preview?: PreviewContext,
   ): ProviderStubResult;
 }

@@ -23,6 +23,14 @@ export interface PackageInfo {
   readonly devDependencies: Readonly<Record<string, string>>;
 }
 
+/** The app's real MUI theme, so previews render with true brand colors. */
+export interface ThemeRef {
+  /** Absolute path of the file exporting the theme. */
+  readonly file: string;
+  /** Export name, e.g. `lightTheme`. */
+  readonly exportName: string;
+}
+
 /**
  * A loaded target project. `workspaceDir` is the tool-owned copy directory;
  * the source `rootPath` is never written to.
@@ -36,4 +44,8 @@ export interface LoadedProject {
   readonly framework: Framework;
   /** Tool-owned scratch dir under `.workspace/<projectHash>/`. */
   readonly workspaceDir: string;
+  /** The app's MUI theme for faithful previews, if one was detected. */
+  readonly themeRef: ThemeRef | null;
+  /** Absolute path of an i18n message catalogue (next-intl), if detected. */
+  readonly messagesFile: string | null;
 }

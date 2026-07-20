@@ -143,6 +143,10 @@ export class EngineSession {
       summary.descriptor,
       this.program,
       bundle.externalDeps,
+      {
+        theme: bundle.previewTheme,
+        messagesPath: bundle.previewMessages,
+      },
     );
     const entry = this.adapter.buildEntry({
       descriptor: summary.descriptor,
