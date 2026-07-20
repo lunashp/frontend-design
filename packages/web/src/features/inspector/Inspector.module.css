@@ -2,8 +2,51 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--surface);
-  border-left: 1px solid var(--line);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border-left: 1px solid var(--glass-border);
+  box-shadow: inset 1px 0 0 var(--glass-hi);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel {
+    background: var(--surface);
+  }
+}
+
+/* Empty state. These four classes were referenced from Inspector.tsx but had
+   never been defined, so the placeholder rendered as unstyled body text with
+   a tofu glyph. An empty panel is an invitation to act, so it gets a
+   direction rather than a shrug: the lamp is lit, nothing is under it yet. */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: auto 0;
+  padding: var(--space-6) var(--space-5);
+}
+
+.placeholderMark {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  /* An empty pool of moonstone sheen — the light is on, nothing under it yet. */
+  background: radial-gradient(circle at 50% 42%, var(--sheen-soft), transparent 68%);
+  opacity: 0.5;
+}
+
+.placeholderTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--text);
+}
+
+.placeholderBody {
+  max-width: 34ch;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
 }
 
 .header {
@@ -24,9 +67,14 @@
 .name {
   font-size: var(--text-xl);
   color: var(--text);
+  /* Wrap the long single-token identifier instead of expanding the row and
+     shoving the close button out of the panel (which clips at overflow:hidden). */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .close {
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   width: 30px;

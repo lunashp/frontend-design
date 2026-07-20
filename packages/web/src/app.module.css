@@ -16,9 +16,16 @@
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in oklch, var(--surface) 60%, transparent);
-  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .header {
+    background: var(--surface);
+  }
 }
 
 .brand {
@@ -34,8 +41,12 @@
   border-radius: 9px;
   font-size: var(--text-lg);
   color: var(--accent-ink);
-  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
-  box-shadow: var(--glow-accent);
+  /* A polished moonstone: periwinkle catching light on the top-left corner,
+     deepening in the shade. Same light direction as the page and the cards. */
+  background: linear-gradient(140deg, var(--rank-atom), var(--accent));
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    var(--shadow-sm);
 }
 .brandText {
   display: flex;
@@ -44,8 +55,8 @@
 }
 .brandName {
   font-family: var(--font-display);
-  font-weight: 660;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .brandTag {
   font-family: var(--font-mono);
@@ -89,9 +100,19 @@
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--space-5);
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--glass-border);
   overflow-y: auto;
-  background: color-mix(in oklch, var(--surface) 30%, transparent);
+  /* Frosted glass over the aurora — the controls float on a pane, the
+     catalogue reads through the frost beside them. */
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar {
+    background: var(--surface);
+  }
 }
 
 .main {

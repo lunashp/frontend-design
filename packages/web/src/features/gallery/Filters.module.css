@@ -81,15 +81,18 @@
 }
 
 .rank[data-active='true'] {
-  color: var(--rank);
-  border-color: color-mix(in oklch, var(--rank) 45%, transparent);
-  background: color-mix(in oklch, var(--rank) 14%, transparent);
+  /* Label in ink, not the gem colour: on the light ground the dusty gems are
+     only AA-large as text. The rank identity is carried by the dot and border,
+     never by the label's colour alone. */
+  color: var(--text);
+  border-color: color-mix(in oklch, var(--rank) 38%, transparent);
+  background: color-mix(in oklch, var(--rank) 15%, transparent);
 }
 
 .kind[data-active='true'] {
   color: var(--accent);
-  border-color: color-mix(in oklch, var(--accent) 45%, transparent);
-  background: var(--accent-ink);
+  border-color: color-mix(in oklch, var(--accent) 32%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
 }
 
 .switch {

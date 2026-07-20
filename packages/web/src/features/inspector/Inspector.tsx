@@ -90,7 +90,7 @@ export function Inspector({
     return (
       <aside className={styles.panel} aria-label="Inspector">
         <div className={styles.placeholder}>
-          <span className={styles.placeholderMark}>◧</span>
+          <span className={styles.placeholderMark} aria-hidden />
           <p className={styles.placeholderTitle}>Select a component</p>
           <p className={styles.placeholderBody}>
             Inspect its props and classification, then render it live in an isolated sandbox.

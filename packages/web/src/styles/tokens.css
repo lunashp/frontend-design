@@ -1,43 +1,111 @@
 /*
- * Design tokens — "precision workbench" direction.
- * Blue-graphite ink chrome (not pure black), monospace-forward metadata,
- * taxonomy hues that carry classification meaning.
+ * Design tokens — "Moonstone".
+ *
+ * A cool pearl ground under frosted liquid glass. Component Explorer looks at
+ * other people's components through glass — a specimen under a lens — so the
+ * surface IS glass, and the colours are the colours a moonstone throws when
+ * light moves across it: a soft blue-white sheen over an iridescent core.
+ *
+ * The palette is one set of "dusty gems" — every accent shares a low, unified
+ * chroma (~0.06–0.09) so nothing shouts and the five read as one cabinet.
+ *
+ * Two things that keep it glass and keep it elegant:
+ *   1. Real blur belongs to the fixed chrome only (header, sidebar, inspector,
+ *      summary). The 1,133-card grid is unvirtualised — a backdrop-filter per
+ *      card would repaint 1,133 offscreen buffers on every scroll. Cards get
+ *      translucency + an edge highlight, never blur. See ComponentCard.
+ *   2. Glass lowers effective contrast, so every glass surface carries an
+ *      opaque fallback and body text stays in ink, never a gem colour.
  */
 
 :root {
-  /* Ink chrome — blue-leaning graphite, layered surfaces */
-  --bg: oklch(19% 0.018 264);
-  --bg-grid: oklch(23% 0.02 264);
-  --surface: oklch(23% 0.019 264);
-  --surface-2: oklch(27% 0.02 264);
-  --surface-3: oklch(31% 0.021 264);
-  --line: oklch(34% 0.02 264);
-  --line-strong: oklch(42% 0.025 264);
+  /* ---- The pearl. Ground → frosted panels get lighter toward white. ---- */
+  --bg: #E9ECF1; /* moonstone pearl, cool blue-grey (not cream) */
+  --surface: #FFFFFF; /* opaque glass fallback — lightest */
+  --surface-2: #F6F8FB; /* card fallback */
+  --surface-3: #EEF1F6;
+  --line: #D6DCE4;
+  --line-strong: #BCC5D0;
 
-  --text: oklch(95% 0.008 264);
-  --text-dim: oklch(72% 0.017 264);
-  --text-faint: oklch(58% 0.018 264);
+  /* ---- Ink. Blue-black, never warm; carries all the text hierarchy. ---- */
+  --text: #1C2530; /* blue-black ink — AA on every light surface */
+  --text-dim: #55606D; /* ~5:1 on white — body-safe */
+  --text-faint: #74808D; /* ~3:1 on white — labels only, never body copy */
 
-  /* Single interactive accent — signal cyan, used sparingly */
-  --accent: oklch(80% 0.13 205);
-  --accent-strong: oklch(72% 0.15 210);
-  --accent-ink: oklch(22% 0.04 220);
+  /* ---- Frosted glass. The fixed chrome; opaque fallback under each. ---- */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72); /* header / sidebar */
+  --glass-blur: 18px;
+  --glass-border: rgba(255, 255, 255, 0.7); /* the glass edge catching light */
+  --glass-hi: rgba(255, 255, 255, 0.9); /* inset top highlight */
+  --glass-shadow: 0 12px 34px -14px rgba(38, 52, 78, 0.25);
 
-  /* Taxonomy = the semantic color system (atomic ranks) */
-  --rank-atom: oklch(80% 0.12 200);
-  --rank-molecule: oklch(82% 0.15 150);
-  --rank-organism: oklch(84% 0.14 85);
-  --rank-page: oklch(78% 0.15 330);
+  /* ---- The cards. Glass-lite: translucent + edge light, NO blur.
+     The border is a soft COOL hairline, not white: a white edge vanishes on
+     the light ground and the cards lose their frame. Definition comes from
+     this quiet blue-grey edge + a soft lift, never from a coloured border. ---- */
+  --card-bg: rgba(255, 255, 255, 0.62);
+  --card-bg-hover: rgba(255, 255, 255, 0.85);
+  --card-border: rgba(72, 92, 130, 0.16);
+  --card-shadow: 0 4px 14px -6px rgba(38, 52, 78, 0.14);
 
-  /* State */
-  --danger: oklch(70% 0.17 25);
-  --warn: oklch(82% 0.15 85);
-  --ok: oklch(82% 0.15 150);
+  /* ---- Interaction accent — moonstone periwinkle. ---- */
+  --accent: oklch(52% 0.09 256); /* #456A9C — 5.2:1 on card, safe as text */
+  --accent-strong: oklch(46% 0.09 256); /* hover/press, darker */
+  --accent-ink: #ffffff; /* text laid on an accent fill */
 
-  /* Type */
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
+  /* ---- The sheen. Light moving across the stone: a pale periwinkle glow,
+          used for the selected card and the empty-lamp mark. Never flat. ---- */
+  --sheen: rgba(120, 150, 205, 0.16);
+  --sheen-soft: rgba(150, 175, 220, 0.5);
+  /* Selection is a soft bloom of light, never a hard coloured ring. No
+     accent outline — the glass edge brightens and a gentle accent-tinted
+     glow falls below. A saturated 1px accent border reads as loud against
+     the pale glass; light does not. */
+  --glow-select:
+    inset 0 1px 0 var(--glass-hi),
+    0 12px 30px -14px color-mix(in oklch, var(--accent) 34%, transparent);
+  /* A periwinkle-tinted hairline for selected edges — mixed most of the way
+     into the neutral line so it whispers the accent, not shouts it. */
+  --border-select: color-mix(in oklch, var(--accent) 42%, var(--line-strong));
+
+  /* ---- Taxonomy = one set of dusty gems, separated by LIGHTNESS. ----
+     Unified low chroma so the four read as one cabinet, not four primaries.
+     Relative-luminance ladder (page 0.13 → atom 0.25) keeps them distinct in
+     greyscale and for colour-vision deficiency. The single warm note (dusty
+     rose) is what stops an all-cool set going clinical. Do NOT even out these
+     lightnesses — that flattening is the bug this palette exists to avoid.
+     Rank colours are dot/border/tint only; labels are ink, so 3:1 suffices. */
+  --rank-atom: oklch(62% 0.075 202); /* #489499 — aquamarine */
+  --rank-molecule: oklch(57.5% 0.065 166); /* #528570 — celadon */
+  --rank-organism: oklch(60% 0.055 28); /* #9F746E — dusty rose (the warm note) */
+  --rank-page: oklch(51.5% 0.08 300); /* #6F5D8F — amethyst */
+
+  /* ---- Semantic state — muted to match the cabinet, dark enough for light. ---- */
+  --danger: oklch(55% 0.13 25); /* garnet */
+  --warn: oklch(62% 0.09 60); /* amber, dusty */
+  --ok: oklch(58% 0.085 162); /* jade */
+
+  /* ---- The aurora behind the glass — what the frost refracts. Very low
+          intensity: lilac, aquamarine, and a warm blush, so the sheen has
+          somewhere to come from. Attached fixed on the body. ---- */
+  --aurora:
+    radial-gradient(90% 70% at 8% -5%, #e3d8f2, transparent 58%),
+    radial-gradient(80% 80% at 92% 12%, #d6eaf2, transparent 58%),
+    radial-gradient(95% 90% at 55% 105%, #f0e9e2, transparent 60%);
+
+  /* ---- Preview surfaces — deliberately NOT themed. They host components
+          scanned out of someone else's project; staining them would misreport
+          what their component looks like. Neutral lightbox, on purpose. ---- */
+  --preview-surface: oklch(96% 0.004 264);
+  --preview-check: oklch(90% 0.006 264);
+
+  /* ---- Type. A catalogue of code: the bookish face names things, the
+          technical face measures them. Display and body must never be the
+          same family — that is a placeholder, not a pairing. ---- */
+  --font-display: 'Fraunces', 'Iowan Old Style', Charter, Georgia, serif;
+  --font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
 
   --text-xs: 0.6875rem;
   --text-sm: 0.8125rem;
@@ -57,17 +125,16 @@
   --space-8: 3rem;
   --space-10: 4.5rem;
 
-  /* Radii — varied by element role */
-  --radius-chip: 5px;
-  --radius-input: 8px;
-  --radius-card: 14px;
+  /* Radii — varied by element role. Glass wants a softer corner. */
+  --radius-chip: 6px;
+  --radius-input: 10px;
+  --radius-card: 16px;
   --radius-pill: 999px;
 
-  /* Depth */
-  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
-  --shadow-md: 0 6px 20px -6px oklch(0% 0 0 / 0.45);
-  --shadow-lg: 0 24px 60px -18px oklch(0% 0 0 / 0.6);
-  --glow-accent: 0 0 0 1px oklch(80% 0.13 205 / 0.4), 0 8px 30px -10px oklch(80% 0.13 205 / 0.35);
+  /* Depth — cool light shadows, never blue-black neon */
+  --shadow-sm: 0 1px 2px rgba(38, 52, 78, 0.1);
+  --shadow-md: 0 8px 24px -10px rgba(38, 52, 78, 0.2);
+  --shadow-lg: 0 24px 60px -18px rgba(38, 52, 78, 0.28);
 
   /* Motion */
   --dur-fast: 130ms;
