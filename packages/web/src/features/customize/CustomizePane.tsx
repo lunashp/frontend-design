@@ -1,35 +1,42 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ComponentArtifact } from '../../api/types.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
-import {
-  customizeSpec,
-  emitRootCss,
-  EMPTY_CUSTOMIZATION,
-  type CustomizationState,
-} from '../../lib/customize.js';
+import { emitRootCss, EMPTY_CUSTOMIZATION, type CustomizationState } from '../../lib/customize.js';
+import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
 import { PropControls } from './PropControls.js';
 import styles from './Customize.module.css';
 
-const CustomizeSandbox = lazy(() => import('./CustomizeSandbox.js'));
-
 const EDITABLE_KINDS = new Set(['enum', 'boolean', 'number', 'color', 'string']);
 
-export function CustomizePane({ artifact }: { artifact: ComponentArtifact }) {
+export function CustomizePane({
+  artifact,
+  projectRoot,
+}: {
+  artifact: ComponentArtifact;
+  projectRoot: string;
+}) {
   const [state, setState] = useState<CustomizationState>(EMPTY_CUSTOMIZATION);
-  // The preview re-bundles on a keyed remount; debounce so it only rebuilds once
-  // the user pauses, while the control inputs stay immediately responsive.
-  const [previewState, setPreviewState] = useState<CustomizationState>(EMPTY_CUSTOMIZATION);
+  // Prop edits rebundle the preview, so debounce them; token edits re-theme live
+  // (CSS-var postMessage), so they apply from `state` immediately.
+  const [debouncedProps, setDebouncedProps] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
-    const t = setTimeout(() => setPreviewState(state), 400);
+    const t = setTimeout(() => setDebouncedProps(state.propValues), 400);
     return () => clearTimeout(t);
   }, [state]);
 
   const tokens = artifact.tokenModel.tokens;
   const editableProps = artifact.propModel.props.filter((p) => EDITABLE_KINDS.has(p.kind));
-  const spec = useMemo(() => customizeSpec(artifact, previewState), [artifact, previewState]);
-  const previewKey = useMemo(() => JSON.stringify(previewState), [previewState]);
+  // Token overrides keyed by CSS var name (what the iframe applies), from live state.
+  const tokenOverrides = useMemo(() => {
+    const byName: Record<string, string> = {};
+    for (const [id, value] of Object.entries(state.tokenOverrides)) {
+      const token = tokens.find((t) => t.id === id);
+      if (token) byName[token.name] = value;
+    }
+    return byName;
+  }, [state.tokenOverrides, tokens]);
   const dirty =
     Object.keys(state.tokenOverrides).length > 0 || Object.keys(state.propValues).length > 0;
 
@@ -55,9 +62,12 @@ export function CustomizePane({ artifact }: { artifact: ComponentArtifact }) {
           tokens below.
         </div>
       ) : (
-        <Suspense fallback={<div className={styles.noPreview}>Loading live preview…</div>}>
-          <CustomizeSandbox key={previewKey} spec={spec} />
-        </Suspense>
+        <LocalPreview
+          projectRoot={projectRoot}
+          id={artifact.descriptor.id}
+          tokenOverrides={tokenOverrides}
+          propOverrides={debouncedProps}
+        />
       )}
 
       <TokenPanel tokens={tokens} overrides={state.tokenOverrides} onChange={setToken} />

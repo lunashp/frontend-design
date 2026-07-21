@@ -34,4 +34,10 @@ export interface PortableBundle {
   readonly previewTheme?: { readonly path: string; readonly exportName: string };
   /** Bundle-relative path of a bundled i18n message catalogue, if included. */
   readonly previewMessages?: string;
+  /**
+   * Self-contained context providers the component consumes (their module is
+   * already bundled) — the preview wraps the component in each so hooks like
+   * `useChatPanel` find their context instead of throwing.
+   */
+  readonly previewProviders?: readonly { readonly path: string; readonly exportName: string }[];
 }

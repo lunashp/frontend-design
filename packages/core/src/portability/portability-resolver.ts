@@ -394,6 +394,13 @@ export function resolvePortability(
     }
   }
 
+  // If the component's subtree already includes a self-contained context
+  // provider's module (it consumes that context), wrap the preview in it so the
+  // consuming hook finds its value. No extra bundling — the module is present.
+  const previewProviders = loaded.contextProviders
+    .filter((p) => graph.localFiles.has(p.file))
+    .map((p) => ({ path: bundlePathOf(p.file, base), exportName: p.exportName }));
+
   const dangling = findDanglingImports(files);
   if (dangling.length > 0) {
     warnings.push(`${dangling.length} unresolved local import(s): ${dangling.slice(0, 3).join(', ')}`);
@@ -408,5 +415,6 @@ export function resolvePortability(
     incomplete: dangling.length > 0,
     previewTheme,
     previewMessages,
+    previewProviders,
   };
 }

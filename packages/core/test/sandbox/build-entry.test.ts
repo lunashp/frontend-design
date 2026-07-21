@@ -24,13 +24,14 @@ function descriptor(over: Partial<ComponentDescriptor>): ComponentDescriptor {
   };
 }
 
-function entryFor(d: ComponentDescriptor): string {
+function entryFor(d: ComponentDescriptor, propModel: BuildEntryInput['propModel'] = { props: [] }): string {
   const input: BuildEntryInput = {
     descriptor: d,
     bundle: { files: {}, entryPath: '/src/Card.tsx', externalDeps: {}, assets: [], warnings: [] },
     sampleProps: { title: 'Hello' },
     providers: NO_PROVIDERS,
     tokenCssPath: '/tokens.css',
+    propModel,
   };
   return buildReactEntry(input);
 }
@@ -56,6 +57,15 @@ describe('buildReactEntry', () => {
     expect(entry).toContain("import '/tokens.css';");
     expect(entry).toContain('"title": "Hello"');
     expect(entry).toContain('createRoot');
+  });
+
+  it('stubs a required function prop the component calls while rendering', () => {
+    // e.g. `t: (key) => string` that NavMenuItem calls as t(labelKey) at render.
+    const entry = entryFor(descriptor({}), {
+      props: [{ name: 't', tsType: '(key: string) => string', kind: 'unknown', required: true }],
+    });
+    expect(entry).toMatch(/__fnStub/);
+    expect(entry).toMatch(/"t": __fnStub/);
   });
 
   it('wraps the mount in an error boundary so a render throw shows a fallback, not a blank', () => {

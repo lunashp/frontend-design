@@ -10,13 +10,32 @@ function withoutExt(p: string): string {
   return p.replace(/\.(tsx|ts|jsx|js)$/, '');
 }
 
-function serializeProps(props: Readonly<Record<string, unknown>>): string {
-  // Functions are dropped by JSON — fine for rendering a sample instance.
-  return JSON.stringify(props ?? {}, null, 2);
+const FUNCTION_TYPE = /=>|\bFunction\b/;
+
+/**
+ * Serialize sample props to a JS object literal. JSON drops functions, so a
+ * required function-typed prop (e.g. a `t(key)` translator or an `onX` handler
+ * the component CALLS while rendering) is injected as a safe stub: it returns
+ * its first string arg (so `t('a.b')` shows the key) else undefined. Without
+ * this, calling an undefined `t` throws `t is not a function` at render.
+ */
+function serializeProps(
+  props: Readonly<Record<string, unknown>>,
+  propModel: BuildEntryInput['propModel'],
+): { code: string; needsStub: boolean } {
+  const fnProps = propModel.props.filter(
+    (p) => p.required && FUNCTION_TYPE.test(p.tsType) && !(p.name in props),
+  );
+  const jsonEntries = Object.entries(props).map(
+    ([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`,
+  );
+  const fnEntries = fnProps.map((p) => `  ${JSON.stringify(p.name)}: __fnStub`);
+  const all = [...jsonEntries, ...fnEntries];
+  return { code: `{\n${all.join(',\n')}\n}`, needsStub: fnProps.length > 0 };
 }
 
 export function buildReactEntry(input: BuildEntryInput): string {
-  const { descriptor, bundle, sampleProps, providers, tokenCssPath } = input;
+  const { descriptor, bundle, sampleProps, providers, tokenCssPath, propModel } = input;
   const importPath = `.${withoutExt(bundle.entryPath)}`;
   // Import the whole namespace and pick the export by name, falling back to the
   // default. `export default <named const>` is reported by ts-morph under the
@@ -61,7 +80,8 @@ class __ErrorBoundary extends React.Component<{ children: React.ReactNode }, { e
   }
 }
 
-const props = ${serializeProps(sampleProps)};
+const __fnStub = (...args: unknown[]): unknown => (typeof args[0] === 'string' ? args[0] : undefined);
+const props = ${serializeProps(sampleProps, propModel).code};
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
 root.render(

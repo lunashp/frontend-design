@@ -66,6 +66,48 @@ export function detectThemeRef(rootPath: string, srcDirs: readonly string[]): Th
   );
 }
 
+/** A self-contained context provider the preview can safely wrap components in. */
+export interface ProviderRef {
+  readonly file: string;
+  readonly exportName: string;
+}
+
+const PROVIDER_EXPORT_RE = /export\s+(?:const|function)\s+(\w+Provider)\b/g;
+// A provider touching these needs data/router we can't supply — unsafe to wrap.
+const UNSAFE_HOOK_RE = /\b(useQuery|useMutation|useRouter|usePathname|useSearchParams|useSession|axios|fetch\s*\()/;
+
+/**
+ * Exported context-provider components that are safe to wrap a preview in:
+ * they render a `createContext` Provider and don't reach for data/router. A
+ * component that consumes such a context (e.g. `useChatPanel`) then finds it,
+ * instead of throwing "must be used within a Provider".
+ */
+export function detectContextProviders(
+  rootPath: string,
+  srcDirs: readonly string[],
+): ProviderRef[] {
+  const files: string[] = [];
+  for (const dir of srcDirs) walk(dir, 6, files);
+
+  const out: ProviderRef[] = [];
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    if (!text.includes('createContext') || !text.includes('Provider')) continue;
+    if (UNSAFE_HOOK_RE.test(text)) continue; // needs data/router — skip
+    PROVIDER_EXPORT_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = PROVIDER_EXPORT_RE.exec(text)) !== null) {
+      out.push({ file, exportName: m[1] as string });
+    }
+  }
+  return out;
+}
+
 const LOCALE_PREFERENCE = ['ko', 'en', 'en-US'];
 
 /**

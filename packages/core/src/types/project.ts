@@ -31,6 +31,12 @@ export interface ThemeRef {
   readonly exportName: string;
 }
 
+/** A self-contained context provider a preview can wrap components in. */
+export interface ProviderRef {
+  readonly file: string;
+  readonly exportName: string;
+}
+
 /**
  * A loaded target project. `workspaceDir` is the tool-owned copy directory;
  * the source `rootPath` is never written to.
@@ -48,4 +54,6 @@ export interface LoadedProject {
   readonly themeRef: ThemeRef | null;
   /** Absolute path of an i18n message catalogue (next-intl), if detected. */
   readonly messagesFile: string | null;
+  /** Self-contained context providers to wrap consuming components in. */
+  readonly contextProviders: readonly ProviderRef[];
 }

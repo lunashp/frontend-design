@@ -19,6 +19,18 @@ import type { SandpackSpec } from '@ce/core';
 export interface PreviewInput {
   readonly targetRoot: string;
   readonly spec: SandpackSpec;
+  /** Prop values to merge into the mounted instance (Customize prop edits). */
+  readonly propOverrides?: Readonly<Record<string, unknown>>;
+}
+
+/** Merge prop overrides into the entry's `const props = {…}` literal. */
+function patchEntryProps(entry: string, propOverrides: Readonly<Record<string, unknown>>): string {
+  if (Object.keys(propOverrides).length === 0) return entry;
+  return entry.replace(/const props = (\{[\s\S]*?\});/, (full, obj: string) => {
+    // Append overrides as a spread so JSON-unfriendly base values (function
+    // stubs like __fnStub) survive; later keys win.
+    return `const props = { ...(${obj}), ...(${JSON.stringify(propOverrides)}) };`;
+  }) || entry;
 }
 
 /** Resolve `/foo` sandbox-root specifiers to the temp bundle dir. */
@@ -44,15 +56,17 @@ function escapeForScript(js: string): string {
  * Throws with esbuild's messages if the bundle can't be built.
  */
 export async function renderPreviewHtml(input: PreviewInput): Promise<string> {
-  const { targetRoot, spec } = input;
+  const { targetRoot, spec, propOverrides } = input;
   const nodeModules = path.join(targetRoot, 'node_modules');
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ce-preview-'));
   try {
     for (const [p, content] of Object.entries(spec.files)) {
+      const patched =
+        p === spec.entryPath && propOverrides ? patchEntryProps(content, propOverrides) : content;
       const file = path.join(dir, p);
       await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.writeFile(file, content);
+      await fs.writeFile(file, patched);
     }
 
     const result = await build({
@@ -69,10 +83,12 @@ export async function renderPreviewHtml(input: PreviewInput): Promise<string> {
       define: { 'process.env.NODE_ENV': '"development"' },
       // Target code (api config, stores) often reads `process.env.*` or `global`
       // at module top level; neither exists in the browser. Shim them so the
-      // module loads instead of throwing `process is not defined`. Env reads
-      // resolve to undefined — fine for a data-less preview.
+      // module loads instead of throwing `process is not defined`. We also flip
+      // NEXT_PUBLIC_USE_MOCK_DATA on: many apps gate a built-in mock layer on a
+      // flag, so enabling it makes data-driven components render sample data
+      // instead of hitting a real (absent) backend and blanking on a 404.
       banner: {
-        js: `globalThis.process=globalThis.process||{env:{NODE_ENV:'development'},platform:'browser',cwd:function(){return '/'}};globalThis.global=globalThis.global||globalThis;`,
+        js: `globalThis.process=globalThis.process||{env:{NODE_ENV:'development',NEXT_PUBLIC_USE_MOCK_DATA:'true'},platform:'browser',cwd:function(){return '/'}};globalThis.global=globalThis.global||globalThis;`,
       },
       logLevel: 'silent',
     });
@@ -96,6 +112,16 @@ ${css}</style>
 </head>
 <body>
 <div id="root"></div>
+<script>
+// Live re-theming: the Customize panel posts token overrides (CSS var name ->
+// value); apply them as root custom properties so the component re-themes
+// instantly, no rebundle. The component references var(--token, default).
+window.addEventListener('message', function (e) {
+  var d = e && e.data;
+  if (!d || d.type !== 'ce:tokens' || !d.tokens) return;
+  for (var k in d.tokens) document.documentElement.style.setProperty(k, d.tokens[k]);
+});
+</script>
 <script>${escapeForScript(js)}</script>
 </body>
 </html>`;

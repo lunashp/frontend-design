@@ -146,6 +146,7 @@ export class EngineSession {
       {
         theme: bundle.previewTheme,
         messagesPath: bundle.previewMessages,
+        providers: bundle.previewProviders,
       },
     );
     const entry = this.adapter.buildEntry({
@@ -154,6 +155,7 @@ export class EngineSession {
       sampleProps,
       providers,
       tokenCssPath: TOKENS_CSS_PATH,
+      propModel: summary.propModel,
     });
     const sandpack = scaffoldSandbox({
       classification: summary.classification,

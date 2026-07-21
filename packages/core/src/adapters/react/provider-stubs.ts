@@ -37,6 +37,10 @@ function usesNextIntl(deps: Readonly<Record<string, string>>): boolean {
   return 'next-intl' in deps;
 }
 
+function usesReactHookForm(deps: Readonly<Record<string, string>>): boolean {
+  return 'react-hook-form' in deps;
+}
+
 /** Wrap a base theme's palette so unknown custom tokens degrade, not throw. */
 const PALETTE_GUARD = `const __FALLBACK = '#9aa0a6';
 function __colorProxy() {
@@ -83,10 +87,14 @@ export function buildProviderStub(
   const mui = usesMui(deps);
   const rq = usesReactQuery(deps);
   const intl = usesNextIntl(deps);
-  if (!mui && !rq && !intl) return NONE;
+  const rhf = usesReactHookForm(deps);
+  const customProviders = preview.providers ?? [];
+  if (!mui && !rq && !intl && !rhf && customProviders.length === 0) return NONE;
 
   const importLines: string[] = [];
   const body: string[] = [];
+  // Statements that must run INSIDE the Providers component (React hooks).
+  const hookBody: string[] = [];
 
   // Build innermost → outermost. QueryClientProvider wraps ThemeProvider so a
   // component using both a query and the theme finds both in context.
@@ -114,6 +122,13 @@ export function buildProviderStub(
     body.push(`const __queryClient = new QueryClient();`);
     inner = `<QueryClientProvider client={__queryClient}>${inner}</QueryClientProvider>`;
   }
+  if (rhf) {
+    // `useFormContext()` returns null without a FormProvider; components then
+    // crash destructuring `control`. Supply an empty form instance.
+    importLines.push(`import { useForm as __useForm, FormProvider as __FormProvider } from 'react-hook-form';`);
+    hookBody.push(`const __rhfMethods = __useForm();`);
+    inner = `<__FormProvider {...__rhfMethods}>${inner}</__FormProvider>`;
+  }
   if (intl) {
     // `useTranslations` throws hard without this provider. With the real message
     // catalogue the component shows true labels; without it, fall back to the
@@ -129,11 +144,20 @@ export function buildProviderStub(
       inner +
       `</NextIntlClientProvider>`;
   }
+  // Outermost: the app's own self-contained context providers (e.g.
+  // ChatPanelProvider), so a consuming hook finds its context instead of
+  // throwing "must be used within a Provider". Their module is already bundled.
+  customProviders.forEach((p, i) => {
+    const alias = `__P${i}`;
+    importLines.push(`import { ${p.exportName} as ${alias} } from '${rel(p.path)}';`);
+    inner = `<${alias}>${inner}</${alias}>`;
+  });
 
+  const hooks = hookBody.length > 0 ? `  ${hookBody.join('\n  ')}\n` : '';
   const providersFile = `${body.join('\n')}
 
 function Providers({ children }: { children: React.ReactNode }) {
-  return ${inner};
+${hooks}  return ${inner};
 }`;
 
   return {

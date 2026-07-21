@@ -57,4 +57,21 @@ describe('buildProviderStub', () => {
     expect(r.providersFile).toMatch(/QueryClientProvider/);
     expect(r.providersFile).toMatch(/NextIntlClientProvider/);
   });
+
+  it('supplies a FormProvider (useForm) for react-hook-form consumers', () => {
+    const r = buildProviderStub({ 'react-hook-form': '^7' });
+    expect(r.imports).toMatch(/react-hook-form/);
+    expect(r.providersFile).toMatch(/__FormProvider/);
+    // useForm is a hook — it must be called INSIDE the Providers component.
+    expect(r.providersFile).toMatch(/function Providers[^]*__useForm\(\)/);
+  });
+
+  it('wraps consuming components in detected self-contained providers', () => {
+    const r = buildProviderStub(
+      {},
+      { providers: [{ path: '/src/Chat/PanelContext.tsx', exportName: 'ChatPanelProvider' }] },
+    );
+    expect(r.imports).toMatch(/import \{ ChatPanelProvider as __P0 \}/);
+    expect(r.providersFile).toMatch(/<__P0>/);
+  });
 });

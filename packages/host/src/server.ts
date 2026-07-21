@@ -108,7 +108,19 @@ export function createHost(options: HostOptions): Host {
       if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
       if (!id) return sendError(res, 400, 'Missing "id"', 'MISSING_ID');
 
-      const cacheKey = `${path.resolve(projectPath)}::${id}`;
+      // Optional prop overrides (Customize prop edits), JSON in the `props` query.
+      const propsRaw = url.searchParams.get('props');
+      let propOverrides: Record<string, unknown> | undefined;
+      if (propsRaw) {
+        try {
+          const parsed = JSON.parse(propsRaw) as unknown;
+          if (parsed && typeof parsed === 'object') propOverrides = parsed as Record<string, unknown>;
+        } catch {
+          /* ignore malformed props */
+        }
+      }
+
+      const cacheKey = `${path.resolve(projectPath)}::${id}::${propsRaw ?? ''}`;
       const cached = previewCache.get(cacheKey);
       if (cached) return sendHtml(res, 200, cached);
 
@@ -129,6 +141,7 @@ export function createHost(options: HostOptions): Host {
         const html = await renderPreviewHtml({
           targetRoot: path.resolve(projectPath),
           spec: artifact.sandpack,
+          propOverrides,
         });
         cachePreview(cacheKey, html);
         return sendHtml(res, 200, html);

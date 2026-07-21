@@ -10,7 +10,7 @@ import type { Framework, LoadedProject, PackageInfo, ProjectRef } from '../types
 import { ProjectLoadError } from '../util/errors.js';
 import { createWorkspace } from '../util/workspace.js';
 import { readTsAliases, readTsSrcDirs } from './resolve-paths.js';
-import { detectThemeRef, detectMessagesFile } from './detect-theme.js';
+import { detectThemeRef, detectMessagesFile, detectContextProviders } from './detect-theme.js';
 
 /** Fallback source directories, in priority order, when tsconfig names none. */
 const SRC_CANDIDATES = ['src', 'app', 'components', 'lib', 'pages'];
@@ -87,5 +87,6 @@ export async function loadProject(
     workspaceDir: workspace.dir,
     themeRef: detectThemeRef(rootPath, srcDirs),
     messagesFile: detectMessagesFile(rootPath),
+    contextProviders: detectContextProviders(rootPath, srcDirs),
   };
 }

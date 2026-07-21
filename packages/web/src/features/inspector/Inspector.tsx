@@ -149,7 +149,7 @@ export function Inspector({
           ) : tab === 'Portable' ? (
             <PortablePane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : (
-            <CustomizePane artifact={artifactState.artifact} />
+            <CustomizePane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ))}
       </div>
     </aside>
