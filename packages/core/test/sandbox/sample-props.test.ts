@@ -92,4 +92,35 @@ describe('generateSampleProps', () => {
     ]);
     expect(Object.keys(out)).toHaveLength(0);
   });
+
+  // Regression: `string | React.ComponentType` (icon-style props) were filled
+  // with {}, and a component that did React.createElement(prop) threw
+  // "Element type is invalid: got object". A string picks the safe branch.
+  it('uses a string for a required union that accepts string (not {})', () => {
+    const out = gen([
+      prop({
+        name: 'iconSrc',
+        kind: 'unknown',
+        tsType: 'string | React.ComponentType<{ sx?: object }>',
+        required: true,
+      }),
+    ]);
+    expect(typeof out.iconSrc).toBe('string');
+  });
+
+  it('leaves a required component-type prop unset ({} would render as an invalid element)', () => {
+    const out = gen([
+      prop({ name: 'Icon', kind: 'unknown', tsType: 'React.ComponentType<{ sx?: object }>', required: true }),
+      prop({ name: 'As', kind: 'unknown', tsType: 'ElementType', required: true }),
+    ]);
+    expect('Icon' in out).toBe(false);
+    expect('As' in out).toBe(false);
+  });
+
+  it('still fills a real data object with {} (Record with a string key is not a string prop)', () => {
+    const out = gen([
+      prop({ name: 'map', kind: 'unknown', tsType: 'Record<string, Foo[]>', required: true }),
+    ]);
+    expect(out.map).toEqual({});
+  });
 });

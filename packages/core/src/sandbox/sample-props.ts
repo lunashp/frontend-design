@@ -18,21 +18,39 @@ function parseBool(value: string | undefined): boolean {
 
 const ARRAY_TYPE = /(\[\]\s*$)|(^(readonly\s+)?Array<)|(^ReadonlyArray<)/;
 const FUNCTION_TYPE = /=>|\bFunction\b/;
+// `string` as a whole union member (`string`, `string | X`, `X | string`) —
+// NOT `string` buried inside `Record<string, …>` or `{ k: string }`.
+const STRING_MEMBER = /(^|\|)\s*string\s*(\||$)/;
+// A React component/element type. JSON can't carry one, and rendering a {}
+// stub as an element throws "Element type is invalid: got object".
+const COMPONENT_TYPE = /\b(ComponentType|ElementType|FunctionComponent|ComponentClass|ReactElement|SvgIconComponent)\b|\bFC\b|\bJSX\.Element\b/;
 
 /**
  * A value for a required prop the control model classified as `unknown` (an
- * object, array, or function). The component will dereference it while
- * rendering, so leaving it `undefined` throws and the preview goes blank.
+ * object, array, function, or component). The component will dereference or
+ * render it, so leaving a data prop `undefined` throws and the preview blanks.
  *
- * Returns `undefined` for function types: JSON can't carry a function, and an
- * unset event handler is harmless at render (it fires on interaction, not mount).
- * Arrays get `[]` so `.map`/`.length` are safe; everything else gets `{}` so a
- * shallow read is merely `undefined`. Deeply-nested data (`d.user.name`) can
- * still throw — that shape can't be invented without the real data.
+ * Order matters:
+ * - functions → `undefined` (JSON can't carry one; an unset handler is harmless
+ *   at render — it only fires on interaction).
+ * - arrays → `[]` so `.map`/`.length` are safe.
+ * - a union that accepts `string` → a string. Safe for anything the component
+ *   renders (text, an `<img src>`, an href) and, crucially, picks the string
+ *   branch of icon-style props typed `string | ComponentType` — which as `{}`
+ *   blow up on `React.createElement(prop)`.
+ * - a component/element type → `undefined`. It can't be represented in JSON, and
+ *   a `{}` stub renders as an invalid element; unset at least fails a truthiness
+ *   guard cleanly instead of throwing an object-as-element error.
+ * - everything else (real data objects) → `{}` so a shallow read is `undefined`.
+ *   Deeply-nested access (`d.user.name`) can still throw — that shape can't be
+ *   invented without the real data.
  */
-function valueForRequiredUnknown(tsType: string): unknown {
+function valueForRequiredUnknown(prop: PropControl): unknown {
+  const tsType = prop.tsType;
   if (FUNCTION_TYPE.test(tsType)) return undefined;
   if (ARRAY_TYPE.test(tsType.trim())) return [];
+  if (STRING_MEMBER.test(tsType)) return humanize(prop.name);
+  if (COMPONENT_TYPE.test(tsType)) return undefined;
   return {};
 }
 
@@ -66,7 +84,7 @@ export function generateSampleProps(
       // Fill only REQUIRED opaque props (objects/arrays); the component will
       // dereference them at render. Optionals keep their real defaults.
       if (prop.required) {
-        const value = valueForRequiredUnknown(prop.tsType);
+        const value = valueForRequiredUnknown(prop);
         if (value !== undefined) out[prop.name] = value;
       }
       continue;

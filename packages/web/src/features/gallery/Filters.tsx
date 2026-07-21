@@ -29,10 +29,24 @@ export function Filters({
         />
       </label>
 
+      <button
+        type="button"
+        className={styles.switch}
+        role="switch"
+        aria-checked={filters.designOnly}
+        onClick={() => set({ designOnly: !filters.designOnly })}
+      >
+        <span className={styles.track} data-on={filters.designOnly}>
+          <span className={styles.thumb} />
+        </span>
+        Design components only
+        <span className={styles.hint}>hides full pages</span>
+      </button>
+
       <fieldset className={styles.group}>
         <legend className="eyebrow">Atomic level</legend>
         <div className={styles.chips}>
-          {RANK_ORDER.map((level: AtomicLevel) => {
+          {RANK_ORDER.filter((level) => !filters.designOnly || level !== 'page').map((level: AtomicLevel) => {
             const active = filters.ranks.includes(level);
             return (
               <button

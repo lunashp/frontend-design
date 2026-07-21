@@ -113,6 +113,36 @@ ${css}</style>
 <body>
 <div id="root"></div>
 <script>
+// Sandboxed opaque-origin previews (sandbox="allow-scripts", no allow-same-origin)
+// throw a SecurityError on ANY access to window.localStorage / sessionStorage —
+// even the property read — so components using useLocalStorage/useSidebarState
+// crash before render. Install an in-memory shim BEFORE the bundle runs; this
+// keeps the sandbox opaque (we do NOT grant same-origin) and the preview simply
+// doesn't persist storage, which is correct for a throwaway render.
+(function () {
+  function memStorage() {
+    var m = Object.create(null);
+    return {
+      getItem: function (k) { k = String(k); return k in m ? m[k] : null; },
+      setItem: function (k, v) { m[String(k)] = String(v); },
+      removeItem: function (k) { delete m[String(k)]; },
+      clear: function () { m = Object.create(null); },
+      key: function (i) { var ks = Object.keys(m); return i in ks ? ks[i] : null; },
+      get length() { return Object.keys(m).length; }
+    };
+  }
+  function usable(name) {
+    try { var s = window[name]; if (!s) return false; s.getItem('__ce_probe__'); return true; }
+    catch (e) { return false; }
+  }
+  ['localStorage', 'sessionStorage'].forEach(function (name) {
+    if (usable(name)) return;
+    try { Object.defineProperty(window, name, { value: memStorage(), configurable: true }); }
+    catch (e) { try { window[name] = memStorage(); } catch (e2) { /* give up */ } }
+  });
+})();
+</script>
+<script>
 // Live customization from the Customize panel, applied instantly with no rebundle:
 //  - ce:tokens  -> set CSS custom properties on :root (re-theme via var(--token))
 //  - ce:design  -> a universal override layer on the component's own root element

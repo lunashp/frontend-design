@@ -7,6 +7,11 @@ export interface FilterState {
   ranks: AtomicLevel[];
   kinds: ComponentKind[];
   presentationalOnly: boolean;
+  /** Show only reusable design components (atoms/molecules/organisms), hiding
+   *  full pages (route-level `~Page`/`~Screen`/`~View` compositions). Default
+   *  on: pages are app-specific, not part of a design system, and mixing them
+   *  into the catalogue is what makes it confusing. */
+  designOnly: boolean;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -14,6 +19,7 @@ export const DEFAULT_FILTERS: FilterState = {
   ranks: [],
   kinds: [],
   presentationalOnly: false,
+  designOnly: true,
 };
 
 export function applyFilters(
@@ -23,6 +29,7 @@ export function applyFilters(
   const q = f.query.trim().toLowerCase();
   return components
     .filter((c) => {
+      if (f.designOnly && c.classification.atomicLevel === 'page') return false;
       if (f.presentationalOnly && c.classification.kind !== 'presentational') return false;
       if (f.ranks.length && !f.ranks.includes(c.classification.atomicLevel)) return false;
       if (f.kinds.length && !f.kinds.includes(c.classification.kind)) return false;
