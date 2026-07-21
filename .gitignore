@@ -19,3 +19,6 @@ pnpm-debug.log*
 
 # Local Claude Code settings (personal, machine-specific)
 .claude/settings.local.json
+
+# npm pack artifacts
+*.tgz

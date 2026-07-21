@@ -1,18 +1,64 @@
 {
-  "name": "@ce/mcp",
-  "version": "0.0.0",
-  "private": true,
+  "name": "component-explorer-mcp",
+  "version": "0.1.0",
   "type": "module",
-  "description": "MCP server (P5) wrapping @ce/core for agent-driven scan/port/customize. Sibling of @ce/host.",
-  "main": "./src/server.ts",
+  "description": "MCP server that scans a React + TypeScript project (read-only), classifies and lists its components, extracts portable code, and re-themes them — over the same engine as the Component Explorer web gallery.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "react",
+    "typescript",
+    "design-system",
+    "components",
+    "claude",
+    "ai"
+  ],
+  "license": "MIT",
+  "author": "lunashp",
+  "homepage": "https://github.com/lunashp/frontend-design/tree/main/packages/mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lunashp/frontend-design.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/lunashp/frontend-design/issues"
+  },
+  "bin": {
+    "component-explorer-mcp": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ce/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "culori": "^4.0.1",
+    "dependency-cruiser": "^16.4.0",
+    "postcss": "^8.4.49",
+    "postcss-modules": "^6.0.0",
+    "postcss-scss": "^4.0.9",
+    "react-docgen-typescript": "^2.2.2",
+    "ts-morph": "^24.0.0",
+    "typescript": "^5.9.3",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@ce/core": "workspace:*",
+    "esbuild": "0.28.1"
   }
 }
