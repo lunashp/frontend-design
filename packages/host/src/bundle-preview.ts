@@ -113,13 +113,28 @@ ${css}</style>
 <body>
 <div id="root"></div>
 <script>
-// Live re-theming: the Customize panel posts token overrides (CSS var name ->
-// value); apply them as root custom properties so the component re-themes
-// instantly, no rebundle. The component references var(--token, default).
+// Live customization from the Customize panel, applied instantly with no rebundle:
+//  - ce:tokens  -> set CSS custom properties on :root (re-theme via var(--token))
+//  - ce:design  -> a universal override layer on the component's own root element
+//                  (#root > *), so size/colour/spacing/etc. work for ANY component
+//                  regardless of whether it exposes tokens.
 window.addEventListener('message', function (e) {
   var d = e && e.data;
-  if (!d || d.type !== 'ce:tokens' || !d.tokens) return;
-  for (var k in d.tokens) document.documentElement.style.setProperty(k, d.tokens[k]);
+  if (!d) return;
+  if (d.type === 'ce:tokens' && d.tokens) {
+    for (var k in d.tokens) document.documentElement.style.setProperty(k, d.tokens[k]);
+    return;
+  }
+  if (d.type === 'ce:design') {
+    var el = document.getElementById('ce-design');
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'ce-design';
+      document.head.appendChild(el);
+    }
+    el.textContent = d.css ? '#root > * {' + d.css + '}' : '';
+    return;
+  }
 });
 </script>
 <script>${escapeForScript(js)}</script>

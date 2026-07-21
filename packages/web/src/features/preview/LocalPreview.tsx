@@ -7,19 +7,22 @@ import styles from './SandboxView.module.css';
  * sandboxed to an opaque origin (allow-scripts only) so the bundled target code
  * can't reach the host API or the parent page.
  *
- * For Customize: `tokenOverrides` (CSS var name → value) are posted to the iframe
- * and applied live with no rebundle; `propOverrides` change the mounted props and
- * so are encoded in the src (the host rebuilds the bundle for them).
+ * For Customize: `tokenOverrides` (CSS var name → value) and `designCss` (a
+ * declaration block applied to the component's root element) are posted to the
+ * iframe and applied live with no rebundle; `propOverrides` change the mounted
+ * props and so are encoded in the src (the host rebuilds the bundle for them).
  */
 export function LocalPreview({
   projectRoot,
   id,
   tokenOverrides,
+  designCss,
   propOverrides,
 }: {
   projectRoot: string;
   id: string;
   tokenOverrides?: Readonly<Record<string, string>>;
+  designCss?: string;
   propOverrides?: Readonly<Record<string, unknown>>;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -33,18 +36,21 @@ export function LocalPreview({
   }, [projectRoot, id, propOverrides]);
 
   const tokensJson = useMemo(() => JSON.stringify(tokenOverrides ?? {}), [tokenOverrides]);
+  const designStr = designCss ?? '';
 
-  // Post token overrides on every change and once the iframe (re)loads.
+  // Post token + design overrides on every change and once the iframe (re)loads.
   useEffect(() => {
-    const post = () => iframeRef.current?.contentWindow?.postMessage(
-      { type: 'ce:tokens', tokens: JSON.parse(tokensJson) as Record<string, string> },
-      '*',
-    );
+    const post = () => {
+      const w = iframeRef.current?.contentWindow;
+      if (!w) return;
+      w.postMessage({ type: 'ce:tokens', tokens: JSON.parse(tokensJson) as Record<string, string> }, '*');
+      w.postMessage({ type: 'ce:design', css: designStr }, '*');
+    };
     post();
     const el = iframeRef.current;
     el?.addEventListener('load', post);
     return () => el?.removeEventListener('load', post);
-  }, [tokensJson, src]);
+  }, [tokensJson, designStr, src]);
 
   return (
     <div className={styles.stage}>

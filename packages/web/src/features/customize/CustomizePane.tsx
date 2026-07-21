@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ComponentArtifact } from '../../api/types.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
 import { emitRootCss, EMPTY_CUSTOMIZATION, type CustomizationState } from '../../lib/customize.js';
+import { emitDesignCss, emitDesignRule } from '../../lib/design-overrides.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
+import { DesignControls } from './DesignControls.js';
 import { PropControls } from './PropControls.js';
 import styles from './Customize.module.css';
-
-const EDITABLE_KINDS = new Set(['enum', 'boolean', 'number', 'color', 'string']);
 
 export function CustomizePane({
   artifact,
@@ -17,8 +17,8 @@ export function CustomizePane({
   projectRoot: string;
 }) {
   const [state, setState] = useState<CustomizationState>(EMPTY_CUSTOMIZATION);
-  // Prop edits rebundle the preview, so debounce them; token edits re-theme live
-  // (CSS-var postMessage), so they apply from `state` immediately.
+  // Prop edits rebundle the preview, so debounce them; token & design edits
+  // re-theme live (postMessage), so they apply from `state` immediately.
   const [debouncedProps, setDebouncedProps] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
@@ -27,7 +27,8 @@ export function CustomizePane({
   }, [state]);
 
   const tokens = artifact.tokenModel.tokens;
-  const editableProps = artifact.propModel.props.filter((p) => EDITABLE_KINDS.has(p.kind));
+  const design = state.designOverrides ?? {};
+
   // Token overrides keyed by CSS var name (what the iframe applies), from live state.
   const tokenOverrides = useMemo(() => {
     const byName: Record<string, string> = {};
@@ -37,40 +38,62 @@ export function CustomizePane({
     }
     return byName;
   }, [state.tokenOverrides, tokens]);
-  const dirty =
-    Object.keys(state.tokenOverrides).length > 0 || Object.keys(state.propValues).length > 0;
 
-  if (tokens.length === 0 && editableProps.length === 0) {
-    return (
-      <div className={styles.empty}>
-        Nothing to customize — no design tokens were extractable (e.g. CSS-in-JS/inline styles) and
-        there are no editable props.
-      </div>
-    );
-  }
+  const designCss = useMemo(() => emitDesignCss(design), [design]);
+
+  const dirty =
+    Object.keys(state.tokenOverrides).length > 0 ||
+    Object.keys(state.propValues).length > 0 ||
+    Object.keys(design).length > 0;
 
   const setToken = (id: string, value: string) =>
     setState((s) => ({ ...s, tokenOverrides: { ...s.tokenOverrides, [id]: value } }));
   const setProp = (name: string, value: unknown) =>
     setState((s) => ({ ...s, propValues: { ...s.propValues, [name]: value } }));
+  // Empty value = "unset": drop the key so it produces no CSS and clears dirty.
+  const setDesign = (id: string, value: string) =>
+    setState((s) => {
+      const next = { ...(s.designOverrides ?? {}) };
+      if (value === '') delete next[id];
+      else next[id] = value;
+      return { ...s, designOverrides: next };
+    });
 
   return (
     <div className={styles.pane}>
       {artifact.sandpack.renderability === 'code-only' ? (
         <div className={styles.noPreview}>
           Live preview isn’t available for this component, but your edits still apply to the copied
-          tokens below.
+          CSS below.
         </div>
       ) : (
         <LocalPreview
           projectRoot={projectRoot}
           id={artifact.descriptor.id}
           tokenOverrides={tokenOverrides}
+          designCss={designCss}
           propOverrides={debouncedProps}
         />
       )}
 
-      <TokenPanel tokens={tokens} overrides={state.tokenOverrides} onChange={setToken} />
+      <section className={styles.section}>
+        <div className={styles.sectionHead}>
+          <span className="eyebrow">Design</span>
+          <span className={styles.sectionNote}>applies to the component · any component</span>
+        </div>
+        <DesignControls overrides={design} onChange={setDesign} />
+      </section>
+
+      {tokens.length > 0 && (
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <span className="eyebrow">Design tokens</span>
+            <span className={styles.sectionNote}>re-themeable · from the source</span>
+          </div>
+          <TokenPanel tokens={tokens} overrides={state.tokenOverrides} onChange={setToken} />
+        </section>
+      )}
+
       <PropControls props={artifact.propModel.props} values={state.propValues} onChange={setProp} />
 
       <div className={styles.actions}>
@@ -82,6 +105,9 @@ export function CustomizePane({
         >
           Reset
         </button>
+        {Object.keys(design).length > 0 && (
+          <CopyButton text={emitDesignRule(artifact.descriptor.name, design)} label="Copy design CSS" />
+        )}
         {tokens.length > 0 && (
           <CopyButton
             text={emitRootCss(tokens, state.tokenOverrides)}
@@ -91,8 +117,9 @@ export function CustomizePane({
       </div>
 
       <p className={styles.hint}>
-        Token edits change only <code>tokens.css</code> — the component keeps its{' '}
-        <code>var(--token, fallback)</code> references, so the copied code stays re-themeable.
+        <strong>Design</strong> edits apply directly to the rendered component — size, colour,
+        spacing, and more — even when it exposes no tokens. <strong>Token</strong> edits change only{' '}
+        <code>tokens.css</code>, so the copied component stays re-themeable.
       </p>
     </div>
   );

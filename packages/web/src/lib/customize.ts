@@ -10,9 +10,17 @@ import type { ComponentArtifact, SandpackSpec, Token } from '../api/types.js';
 export interface CustomizationState {
   tokenOverrides: Record<string, string>;
   propValues: Record<string, unknown>;
+  /** Universal design overrides (size/colour/spacing/…) applied to the
+   *  component's root element in the preview — independent of any tokens.
+   *  Optional so callers that predate it (and tests) stay valid. */
+  designOverrides?: Record<string, string>;
 }
 
-export const EMPTY_CUSTOMIZATION: CustomizationState = { tokenOverrides: {}, propValues: {} };
+export const EMPTY_CUSTOMIZATION: CustomizationState = {
+  tokenOverrides: {},
+  propValues: {},
+  designOverrides: {},
+};
 
 /** Regenerate the `:root { … }` block with overrides applied. */
 export function emitRootCss(tokens: readonly Token[], overrides: Record<string, string>): string {

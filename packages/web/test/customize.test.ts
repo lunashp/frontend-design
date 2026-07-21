@@ -5,6 +5,7 @@ import {
   injectTokenOverrides,
   customizeSpec,
 } from '../src/lib/customize.js';
+import { emitDesignCss, emitDesignRule } from '../src/lib/design-overrides.js';
 import type { ComponentArtifact, Token } from '../src/api/types.js';
 
 function token(id: string, name: string, value: string): Token {
@@ -83,5 +84,46 @@ describe('customizeSpec', () => {
     expect(spec.files['/tokens.css']).toContain('--color-1: #e11d48;');
     expect(spec.files['/index.tsx']).toContain('setProperty');
     expect(spec.files['/index.tsx']).toContain('#e11d48');
+  });
+});
+
+describe('emitDesignCss (universal design overrides)', () => {
+  it('is empty when nothing is set', () => {
+    expect(emitDesignCss({})).toBe('');
+  });
+  it('maps colour and spacing to !important declarations', () => {
+    const css = emitDesignCss({ color: '#fff', background: '#000', padding: '12' });
+    expect(css).toContain('color: #fff !important;');
+    expect(css).toContain('background: #000 !important;');
+    expect(css).toContain('padding: 12px !important;');
+  });
+  it('turns scale into a transform, and skips a no-op scale of 100', () => {
+    expect(emitDesignCss({ scale: '120' })).toContain('transform: scale(1.2) !important;');
+    expect(emitDesignCss({ scale: '100' })).toBe('');
+  });
+  it('composes a border from width + colour, and border:none at width 0', () => {
+    const css = emitDesignCss({ borderWidth: '2', borderColor: '#f00' });
+    expect(css).toContain('border-style: solid !important;');
+    expect(css).toContain('border-width: 2px !important;');
+    expect(css).toContain('border-color: #f00 !important;');
+    expect(emitDesignCss({ borderWidth: '0' })).toContain('border: none !important;');
+  });
+  it('resolves shadow presets and opacity', () => {
+    expect(emitDesignCss({ shadow: 'md' })).toContain('box-shadow: 0 4px 12px');
+    expect(emitDesignCss({ opacity: '50' })).toContain('opacity: 0.5 !important;');
+    expect(emitDesignCss({ opacity: '100' })).toBe('');
+  });
+});
+
+describe('emitDesignRule (copyable CSS)', () => {
+  it('emits a named rule without !important', () => {
+    const rule = emitDesignRule('MyButton', { color: '#111', radius: '8' });
+    expect(rule).toContain('.MyButton {');
+    expect(rule).toContain('color: #111;');
+    expect(rule).toContain('border-radius: 8px;');
+    expect(rule).not.toContain('!important');
+  });
+  it('is empty when nothing is set', () => {
+    expect(emitDesignRule('X', {})).toBe('');
   });
 });
