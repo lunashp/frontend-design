@@ -1,10 +1,10 @@
 /**
  * @ce/core — framework-agnostic engine.
  *
- * Public surface: type contracts, the adapter registry, and (as later phases
- * land) the high-level pipeline functions (scanProject, buildArtifact,
- * customizeArtifact). The engine NEVER imports Sandpack; it emits serializable
- * artifacts consumed identically by the web app and the future MCP server.
+ * Public surface: type contracts, the adapter registry, and the high-level
+ * pipeline functions (scanProject, buildArtifact, customizeArtifact). The engine
+ * NEVER imports Sandpack; it emits serializable artifacts consumed identically
+ * by the web app and the MCP server.
  */
 
 export const ENGINE_VERSION = '0.0.0';
@@ -47,6 +47,24 @@ export {
   type TokenizeResult,
 } from './tokenize/tokenization-transform.js';
 export { categoryFor } from './tokenize/categorize.js';
+
+export {
+  customizeArtifact,
+  customizeSpec,
+  patchEntryProps,
+  injectTokenOverrides,
+  type CustomizedComponent,
+} from './customize/customize-artifact.js';
+export {
+  emitDesignDeclarations,
+  emitDesignCss,
+  emitDesignRule,
+  DESIGN_GROUPS,
+  type DesignControlKind,
+  type DesignOption,
+  type DesignField,
+  type DesignGroup,
+} from './customize/design-overrides.js';
 
 export {
   EngineError,

@@ -101,3 +101,45 @@ present" is the default behaviour, not something to branch on.
   transiently unreachable, and every tool here is non-interactive but network-bound.
   A failed md-log call never blocks work and never fails the gate — report the
   failure and move on.
+
+## ce-mcp MCP server (agent-facing engine tools) — P5
+
+`@ce/mcp` (`packages/mcp`) wraps the same `EngineSession` as `@ce/host`, exposing the
+engine to an agent over stdio. It is the MCP sibling of the web host — a thin adapter,
+no engine logic of its own. Four tools:
+
+| Tool | Purpose |
+|------|---------|
+| `scan_project` | Scan a project (read-only); returns compact stats. Run first; other tools reuse the cached scan. |
+| `list_components` | Filtered component rows (by `atomicLevel` / `kind` / `nameIncludes` / `maxContextDependencyScore` / `limit`). Each row's `id` is the handle for the next two tools. |
+| `get_portable_code` | One component's copy-ready bundle: `files` (incl. `/tokens.css`), `externalDeps`, and re-themeable `tokens[]`. |
+| `customize_component` | Re-theme + restyle: `tokenOverrides` (by token id), `propValues`, `designOverrides`. Returns re-themed `tokens.css`, a copyable design CSS rule, and the customized files. |
+
+### Config & running
+
+- Registered in `.mcp.json` (committed) as `ce-mcp`, launched from the repo root with
+  `pnpm -s exec tsx packages/mcp/src/main.ts`. **`-s` (silent) matters:** on stdio,
+  **stdout is reserved for JSON-RPC** — pnpm's banner would corrupt the protocol. All
+  server logging goes to **stderr** (the entry's logger forces every level there). If
+  `pnpm -s` ever pollutes stdout, switch to `node --import tsx packages/mcp/src/main.ts`.
+- **`projectPath` is a per-call argument** (stateless — one server serves any project).
+  `CE_DEFAULT_PROJECT` pins a fallback used when a call omits it; `CE_WORKSPACE`
+  relocates the engine scratch dir (defaults to repo-root `.workspace/`, gitignored).
+  The target is only ever read — the engine's sole writer stays inside the workspace.
+- Like md-log, it is a project-scoped server: a fresh (esp. cloud) session shows it
+  `⏸ Pending approval` until approved once. User-level `~/.claude` / `claude mcp add`
+  do not transfer to cloud VMs, so this server lives in `.mcp.json`, not user config.
+- Run directly with `pnpm --filter @ce/mcp start` (or `dev` for watch). Both are
+  long-running and **excluded from the verification gate**; only `typecheck` runs there
+  (`@ce/mcp` has no `build` step — tsx runs the `.ts` sources).
+
+### Large projects & timeouts
+
+- The first `scan_project` on a big target (e.g. `brandvis-frontend`, 1000+ components)
+  can run for minutes — the same cost the web host pays; the result is then cached, so
+  `list_components` / `get_portable_code` / `customize_component` are fast afterward.
+- The server forwards engine progress as MCP **progress notifications** on every scanning
+  call (the stdio analogue of the host's WebSocket progress). A client that supplies a
+  progress token and sets `resetTimeoutOnProgress` keeps the request alive across a long
+  scan; otherwise raise the client's request timeout. Progress and all logs go to stderr,
+  never stdout.

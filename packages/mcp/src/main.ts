@@ -1,15 +1,67 @@
 /**
- * @ce/mcp — MCP server wrapping @ce/core for agent-driven scan/port/customize.
- * Placeholder until P5; the engine is already transport-agnostic, so this will
- * be a thin adapter (scan_project / list_components / get_portable_code /
- * customize_component) over the same EngineSession the web host uses.
+ * @ce/mcp entry point — a stdio MCP server wrapping @ce/core. Usage (via an MCP
+ * client / .mcp.json):
+ *   tsx src/main.ts [--project ../some-frontend] [--workspace .workspace]
+ *
+ * The engine is transport-agnostic; this file only wires stdio and process
+ * lifecycle. CRITICAL: on stdio, stdout is reserved for JSON-RPC — every log
+ * MUST go to stderr, so the logger below routes ALL levels (and progress) there.
+ * The default createLogger sink writes info/warn to stdout, which would corrupt
+ * the protocol.
  */
 
-export const MCP_PLACEHOLDER = 'P5' as const;
+import * as path from 'node:path';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createLogger } from '@ce/core';
+import { createMcpServer } from './server.js';
+import { SessionCache } from './session-cache.js';
 
-function main(): void {
-  console.error('[ce:mcp] Not implemented yet (P5). The engine (@ce/core) is ready to wrap.');
-  process.exitCode = 1;
+interface Args {
+  project?: string;
+  workspaceRoot?: string;
 }
 
-main();
+function parseArgs(argv: readonly string[]): Args {
+  const args: Args = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if ((arg === '--project' || arg === '-p') && argv[i + 1]) {
+      args.project = path.resolve(argv[++i] as string);
+    } else if (arg === '--workspace' && argv[i + 1]) {
+      args.workspaceRoot = path.resolve(argv[++i] as string);
+    } else if (!arg?.startsWith('-') && arg) {
+      args.project = path.resolve(arg);
+    }
+  }
+  return args;
+}
+
+// Every level → stderr. Never console.log on a stdio transport.
+const logger = createLogger({
+  sink: (level, message, meta) => console.error(`[ce:mcp:${level}] ${message}`, meta ?? ''),
+  onProgress: (e) => console.error(`[ce:mcp:progress] ${e.phase} ${e.message}`),
+});
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const workspaceRoot =
+    args.workspaceRoot ?? process.env.CE_WORKSPACE ?? path.join(process.cwd(), '.workspace');
+  const defaultProject =
+    args.project ??
+    (process.env.CE_DEFAULT_PROJECT ? path.resolve(process.env.CE_DEFAULT_PROJECT) : undefined);
+
+  const cache = new SessionCache(workspaceRoot);
+  const server = createMcpServer({ cache, defaultProject, logger });
+
+  await server.connect(new StdioServerTransport());
+  console.error('[ce:mcp] ready on stdio');
+  if (defaultProject) console.error(`[ce:mcp] default project: ${defaultProject}`);
+
+  const shutdown = () => {
+    void server.close().then(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+void main();
