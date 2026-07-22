@@ -1,16 +1,18 @@
 /**
- * contextDependencyScore — the key signal for "will this render cheaply in
- * isolation?". 0 = a presentational atom; higher = more app context required.
+ * HAND-MAINTAINED MIRROR of the engine's `classify/context-score.ts` and the
+ * `isStylingContext` half of `classify/styling-context.ts`. The browser bundle
+ * never imports @ce/core (Node-only deps), and the API sends the finished score
+ * without its terms, so the only way the gallery can answer "why is this a 6.5?"
+ * is to recompute the breakdown here — from the same weights.
  *
- * The score is a bare verdict: shown on its own, nobody can tell whether a 4.5
- * came from a store or from three contexts, and a consumer that reconstructs
- * the breakdown needs its own copy of the weights — which then drifts the first
- * time one is tuned. So the sum and its explanation are produced by the SAME
- * pass over WEIGHTS, and the scorer is defined in terms of the explainer.
+ * Two copies of a weight table drift the first time one is tuned, which is the
+ * exact failure the engine's single-table refactor exists to prevent, so
+ * `packages/web/test/context-score-mirror.test.ts` runs both sides over the same
+ * signals and fails on the first disagreement. Same arrangement as
+ * `packages/web/src/lib/design-overrides.ts`. Change one side, change both.
  */
 
-import type { ClassificationSignals } from '../types/component.js';
-import { appContextConsumers } from './styling-context.js';
+import type { ClassificationSignals } from '../api/types.js';
 
 /** One term of the sum: what pushed the score up, and by how much. */
 export interface ContextScoreContribution {
@@ -19,7 +21,6 @@ export interface ContextScoreContribution {
   readonly weight: number;
 }
 
-/** The ONE definition of every weight. Nothing else may restate these numbers. */
 const WEIGHTS = {
   router: 2,
   store: 3,
@@ -28,6 +29,14 @@ const WEIGHTS = {
   appContext: 1.5,
   serverComponent: 1,
 } as const;
+
+const STYLING_CONTEXT =
+  /^(use(Theme|ThemeUI|Styled(Theme)?|ColorMode|ColorScheme|DarkMode|Emotion(Theme)?|Tokens|DesignTokens|MediaQuery|Breakpoints?)|(Styled)?ThemeContext|ColorModeContext)$/;
+
+/** True when a context consumer only affects how the component looks. */
+export function isStylingContext(consumer: string): boolean {
+  return STYLING_CONTEXT.test(consumer);
+}
 
 /** Weights land on halves, so one decimal is exact — this only trims float dust. */
 function round1(n: number): number {
@@ -49,7 +58,7 @@ export function explainContextScore(
   }
   // Styling contexts cost nothing: a theme has a default or a stubbed provider,
   // so needing one does not stop the component rendering in isolation.
-  for (const consumer of appContextConsumers(s.contextConsumers)) {
+  for (const consumer of s.contextConsumers.filter((c) => !isStylingContext(c))) {
     contributions.push({ label: consumer, weight: WEIGHTS.appContext });
   }
   if (!s.isClientComponent) {

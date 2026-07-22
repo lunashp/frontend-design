@@ -35,6 +35,21 @@ const EVERY_OVERRIDE: Record<string, string> = Object.fromEntries(
   ),
 );
 
+/**
+ * State values that differ from the resting ones, so the relative no-op elision
+ * (a state `scale`/`opacity` is dropped only when it equals the resting value)
+ * is exercised on both sides rather than short-circuited by identical inputs.
+ */
+const RELATIVE_OVERRIDES: Record<string, string> = {
+  scale: '120',
+  'hover:scale': '100',
+  'focus:scale': '120',
+  'active:scale': '80',
+  opacity: '50',
+  'hover:opacity': '100',
+  'active:opacity': '50',
+};
+
 describe('web design-overrides mirror', () => {
   it('exposes the same field ids in the same order', () => {
     expect(mirror.DESIGN_FIELDS).toEqual(core.DESIGN_FIELDS);
@@ -63,6 +78,18 @@ describe('web design-overrides mirror', () => {
     expect(mirror.emitDesignRule('Card', EVERY_OVERRIDE)).toBe(
       core.emitDesignRule('Card', EVERY_OVERRIDE),
     );
+  });
+
+  it('elides state no-ops against the resting value identically on both sides', () => {
+    expect(mirror.emitDesignStyleSheet(RELATIVE_OVERRIDES)).toBe(
+      core.emitDesignStyleSheet(RELATIVE_OVERRIDES),
+    );
+    // Self-guard: the fixture must actually reach the relative branch, or this
+    // pair would agree on an empty string and prove nothing.
+    expect(core.emitDesignStyleSheet(RELATIVE_OVERRIDES)).toContain(
+      '#root > *:hover { transform: scale(1) !important',
+    );
+    expect(core.emitDesignStyleSheet(RELATIVE_OVERRIDES)).not.toContain('#root > *:focus-visible');
   });
 
   it('agrees on which keys are real design fields', () => {

@@ -4,6 +4,7 @@ import {
   type ClassificationSignals,
   type ComponentArtifact,
   type ComponentSummary,
+  type HeuristicWarning,
   type PropControl,
   type ScanResult,
 } from '@ce/core';
@@ -92,7 +93,29 @@ const SCAN: ScanResult = {
   components: COMPONENTS,
   failures: [{ componentId: '/p/X.tsx#X', name: 'X', filePath: '/p/X.tsx', message: 'boom' }],
   warnings: ['skipped X'],
+  heuristicWarnings: [],
 };
+
+const COLLAPSED: HeuristicWarning = {
+  signal: 'usesStore',
+  dependency: 'zustand',
+  scanned: 1133,
+  message:
+    'Heuristic check: this project depends on "zustand", but store usage was detected in 0 of ' +
+    '1133 components. Either no component uses it, or the usesStore heuristic no longer matches ' +
+    "this project's naming conventions.",
+};
+
+/** `n` distinct analysis failures, with the prose restatement the engine logs. */
+function failureFlood(n: number): Pick<ScanResult, 'failures' | 'warnings'> {
+  const failures = Array.from({ length: n }, (_, i) => ({
+    componentId: `/p/C${i}.tsx#C${i}`,
+    name: `C${i}`,
+    filePath: `/p/C${i}.tsx`,
+    message: 'checker exploded',
+  }));
+  return { failures, warnings: failures.map((f) => `Failed to analyze ${f.name}: ${f.message}`) };
+}
 
 function artifact(overrides: Partial<ComponentArtifact> = {}): ComponentArtifact {
   return {
@@ -181,6 +204,40 @@ describe('toScanSummary', () => {
     expect(s.warningCount).toBe(40);
     expect(s.warnings).toHaveLength(20);
     expect(s.warningsTruncated).toBe(true);
+  });
+
+  it('carries the heuristic diagnostic past the cap that used to eat it', () => {
+    // The measured defect: 25 per-failure warnings + 1 scan-level finding
+    // appended LAST meant 26 warnings, 20 on the wire, and the one finding worth
+    // reading gone — on exactly the large targets whose scale makes it diagnostic.
+    const s = toScanSummary({ ...SCAN, ...failureFlood(25), heuristicWarnings: [COLLAPSED] });
+
+    expect(s.warningsTruncated).toBe(true);
+    expect(s.heuristicWarnings).toEqual([COLLAPSED]);
+  });
+
+  it('never truncates the heuristic list — it is bounded by detectors, not project size', () => {
+    // Three graded signals is the ceiling regardless of how big the target is,
+    // so capping it could only ever drop signal for no budget saving.
+    const all: HeuristicWarning[] = [
+      COLLAPSED,
+      { ...COLLAPSED, signal: 'usesRouter', dependency: 'react-router-dom' },
+      { ...COLLAPSED, signal: 'usesDataFetching', dependency: 'swr' },
+    ];
+    const s = toScanSummary({ ...SCAN, ...failureFlood(40), heuristicWarnings: all });
+
+    expect(s.heuristicWarnings).toHaveLength(3);
+    expect(s.heuristicWarnings.map((h) => h.signal)).toEqual([
+      'usesStore',
+      'usesRouter',
+      'usesDataFetching',
+    ]);
+  });
+
+  it('reports zero findings as an empty list, not as a missing field', () => {
+    // An agent must be able to read the field unconditionally; `undefined` would
+    // be indistinguishable from an older server that never checked.
+    expect(toScanSummary(SCAN).heuristicWarnings).toEqual([]);
   });
 });
 

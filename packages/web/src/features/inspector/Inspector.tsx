@@ -3,6 +3,7 @@ import type { ComponentSummary } from '../../api/types.js';
 import { useArtifact } from '../../api/useArtifact.js';
 import { KIND_LABEL, RANKS } from '../../lib/taxonomy.js';
 import { editorLinks, formatLocation, relativePath } from '../../lib/editor-links.js';
+import { explainContextScore } from '../../lib/context-score.js';
 import type { CustomizationState } from '../../lib/customize.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
 import { RankChip } from '../gallery/RankChip.js';
@@ -26,6 +27,74 @@ const ENABLED_TABS: ReadonlySet<Tab> = new Set<Tab>([
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
+/** Tab order under `root`: focusable descendants that are actually rendered. */
+function tabStops(root: ParentNode): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.offsetParent !== null,
+  );
+}
+
+/**
+ * Messages posted by the preview iframe's keyboard bridge (see
+ * `PREVIEW_KEYBOARD_BRIDGE` in @ce/host). The preview is sandboxed to an opaque
+ * origin, so its key events never reach this document and these stand in for
+ * them.
+ */
+interface BridgeMessage {
+  readonly type: 'ce:escape' | 'ce:tab-out' | 'ce:preview-ready';
+  readonly shiftKey?: boolean;
+}
+
+function bridgeMessage(data: unknown): BridgeMessage | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const { type, shiftKey } = data as { type?: unknown; shiftKey?: unknown };
+  if (type !== 'ce:escape' && type !== 'ce:tab-out' && type !== 'ce:preview-ready') return null;
+  return { type, shiftKey: shiftKey === true };
+}
+
+/**
+ * Our half of the bridge's handshake. Until a frame receives this it leaves Tab
+ * to the browser, so sending it is what arms the Escape/Tab forwarding — and
+ * never sending it is what keeps a preview from becoming a keyboard trap.
+ */
+const EMBEDDER_READY = { type: 'ce:embedder-ready' } as const;
+
+function armFrame(frame: HTMLIFrameElement): void {
+  // '*' is not a shortcut: the preview is sandboxed to an opaque origin, which
+  // no explicit targetOrigin can name. The payload is a constant with nothing
+  // in it, addressed to a Window we created ourselves.
+  frame.contentWindow?.postMessage(EMBEDDER_READY, '*');
+}
+
+/**
+ * Place focus where Tab would have put it. The bridge has already called
+ * `preventDefault()` inside the frame, so the browser will not move focus for
+ * us: doing nothing here is exactly the keyboard trap this pair exists to avoid.
+ *
+ * Overlay IS a modal, so the cycle stays inside the panel. Docked is not a
+ * modal — nothing is behind a scrim and there is nothing to keep focus away
+ * from — so the answer there is simply the next stop in the whole document,
+ * which is what the browser would have done on its own.
+ */
+function focusPastFrame(
+  panel: HTMLElement,
+  frame: HTMLIFrameElement,
+  shiftKey: boolean,
+  overlay: boolean,
+): void {
+  const stops = tabStops(overlay ? panel : document);
+  const at = stops.indexOf(frame);
+  // Wrapping at the far edge is deliberate: the browser would move on to its
+  // own chrome, which a page cannot do, and wrapping still gets the user out of
+  // the frame — the property that actually matters.
+  const step = at + (shiftKey ? -1 : 1);
+  const target = at === -1 ? undefined : stops[(step + stops.length) % stops.length];
+  // No other stop to go to (frame hidden, detached mid-key, or the only one
+  // there is): blur is the honest fallback — focus lands on <body>, still out.
+  if (target && target !== frame) target.focus();
+  else frame.blur();
+}
+
 function DetailsBody({
   component,
   projectRoot,
@@ -33,7 +102,7 @@ function DetailsBody({
   component: ComponentSummary;
   projectRoot: string;
 }) {
-  const { descriptor, classification, propModel } = component;
+  const { descriptor, classification, signals, propModel } = component;
   const { loc } = descriptor;
   const relPath = relativePath(projectRoot, descriptor.filePath);
 
@@ -75,8 +144,13 @@ function DetailsBody({
         />
       </div>
 
+      {/* The Details tab is where "why is this a 6.5?" gets asked, so the score
+          is shown decomposed into the signals that produced it. */}
       <div className={styles.meterBlock}>
-        <ContextMeter score={classification.contextDependencyScore} />
+        <ContextMeter
+          score={classification.contextDependencyScore}
+          contributions={explainContextScore(signals)}
+        />
       </div>
 
       <section className={styles.section}>
@@ -128,9 +202,7 @@ export function Inspector({
         return;
       }
       if (event.key !== 'Tab') return;
-      const stops = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-        (el) => el.offsetParent !== null,
-      );
+      const stops = tabStops(panel);
       const first = stops[0];
       const last = stops[stops.length - 1];
       if (!first || !last) {
@@ -155,6 +227,63 @@ export function Inspector({
       document.removeEventListener('keydown', onKeyDown);
       if (opener?.isConnected) opener.focus();
     };
+  }, [overlay, id, onClose]);
+
+  // The Preview tab's iframe is cross-origin (sandbox without
+  // allow-same-origin), so the trap's `onKeyDown` above never sees a key pressed
+  // inside it — Escape did nothing and Tab left the trap. Its bridge posts those
+  // keys instead; this is the receiving half.
+  //
+  // It is NOT overlay-only, and that is the whole point. It used to sit inside
+  // the modal effect above, behind `if (!overlay || !id) return`, while the
+  // bridge intercepted Tab in every preview — so on every viewport wider than
+  // the compact breakpoint (the DEFAULT desktop layout, inspector docked) the
+  // key was swallowed and nobody moved focus: a WCAG 2.1.2 keyboard trap with
+  // no way out but the mouse. Whenever a component is selected there may be a
+  // preview to answer, so whenever a component is selected we listen.
+  useEffect(() => {
+    if (!id) return;
+
+    const onMessage = (event: MessageEvent) => {
+      const panel = panelRef.current;
+      const data: unknown = event.data;
+      const message = bridgeMessage(data);
+      if (!panel || !message) return;
+
+      // Identity, not origin: an opaque-origin frame reports `event.origin` as
+      // the literal "null" that EVERY sandboxed frame reports, so it proves
+      // nothing. The source Window can't be forged — only the frame we embedded
+      // can be `event.source` — so that is the gate, scoped to this panel's own
+      // iframes rather than any frame on the page.
+      const frame = [...panel.querySelectorAll('iframe')].find(
+        (el) => el.contentWindow !== null && el.contentWindow === event.source,
+      );
+      if (!frame) return;
+
+      if (message.type === 'ce:preview-ready') {
+        armFrame(frame);
+        return;
+      }
+      if (message.type === 'ce:escape') {
+        // Escape dismisses a modal, and docked there is no modal to dismiss:
+        // the gallery behind it is not covered by a scrim and was reachable all
+        // along. Doing nothing matches Escape everywhere else in a non-modal
+        // document, and closing would silently throw away the open tab and any
+        // customization in progress. Deliberate, not an oversight.
+        if (overlay) onClose();
+        return;
+      }
+      focusPastFrame(panel, frame, message.shiftKey === true, overlay);
+    };
+
+    window.addEventListener('message', onMessage);
+    // Re-arm frames that are already loaded. This effect re-registers when the
+    // layout crosses the compact breakpoint, and a frame that announced itself
+    // before that would otherwise be left holding keys nobody receives.
+    const panel = panelRef.current;
+    if (panel) for (const frame of panel.querySelectorAll('iframe')) armFrame(frame);
+
+    return () => window.removeEventListener('message', onMessage);
   }, [overlay, id, onClose]);
 
   // Build the full artifact once for whichever tab needs it.

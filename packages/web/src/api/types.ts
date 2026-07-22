@@ -78,13 +78,52 @@ export interface ScanFailure {
   message: string;
 }
 
+/**
+ * The `ClassificationSignals` fields the engine grades for collapse. Written as
+ * a `Pick` over the mirrored signals rather than a bare union so renaming a
+ * signal on this side is a compile error here instead of a note that silently
+ * stops matching the engine's.
+ */
+export type GradedSignal = keyof Pick<
+  ClassificationSignals,
+  'usesRouter' | 'usesStore' | 'usesDataFetching'
+>;
+
+/**
+ * A signal detector a whole scan proved is no longer matching: zero hits across
+ * the corpus while the target declares a dependency that exists to be detected.
+ * Scan-LEVEL, so it belongs to the scan and not to any component.
+ *
+ * `message` is authored engine-side and carried verbatim. Re-writing the
+ * sentence here would give one finding two authors, and this file cannot import
+ * the engine's copy — so it forwards the prose and formats only the headline.
+ */
+export interface HeuristicWarning {
+  signal: GradedSignal;
+  dependency: string;
+  scanned: number;
+  message: string;
+}
+
 export interface ScanResult {
   artifactVersion: number;
   projectRoot: string;
   framework: string;
   components: ComponentSummary[];
   failures: ScanFailure[];
+  /**
+   * The prose restatement of every `failures` entry — the human log — and
+   * NOTHING else. Scan-level findings used to be appended here too, last, where
+   * every consumer that caps this list dropped them first. They now have their
+   * own typed field; see `heuristicWarnings`.
+   */
   warnings: string[];
+  /**
+   * Detectors that produced zero hits across the whole scan while the project
+   * declares a library that exists to be detected. Bounded by the number of
+   * graded signals rather than by project size, so it is never truncated.
+   */
+  heuristicWarnings: HeuristicWarning[];
 }
 
 export type Renderability = 'full' | 'stubbed' | 'code-only';

@@ -5,7 +5,14 @@ import type { AtomicLevel, ComponentKind, ComponentSummary } from '../src/api/ty
 function comp(
   name: string,
   atomicLevel: AtomicLevel,
-  opts: { kind?: ComponentKind; ctx?: number; path?: string; props?: string[] } = {},
+  opts: {
+    kind?: ComponentKind;
+    ctx?: number;
+    path?: string;
+    props?: string[];
+    hooks?: string[];
+    contexts?: string[];
+  } = {},
 ): ComponentSummary {
   return {
     descriptor: { name, filePath: opts.path ?? `/p/${name}.tsx` },
@@ -14,6 +21,7 @@ function comp(
       kind: opts.kind ?? 'presentational',
       contextDependencyScore: opts.ctx ?? 0,
     },
+    signals: { hookNames: opts.hooks ?? [], contextConsumers: opts.contexts ?? [] },
     propModel: { props: (opts.props ?? []).map((p) => ({ name: p })) },
   } as unknown as ComponentSummary;
 }
@@ -97,6 +105,28 @@ describe('applyFilters — query matches prop names', () => {
       comp('C', 'atom', { ctx: 0 }),
     ];
     expect(names(applyFilters(set, DEFAULT_FILTERS))).toEqual(['C', 'A', 'B']);
+  });
+});
+
+describe('applyFilters — query matches the signals behind the classification', () => {
+  const FEED = comp('Feed', 'organism', { hooks: ['useQuery', 'useSession'] });
+  const THEMED = comp('Themed', 'atom', { contexts: ['ThemeContext'] });
+  const PLAIN = comp('Plain', 'atom');
+
+  it('finds components by a hook they call', () => {
+    expect(names(applyFilters([FEED, THEMED, PLAIN], { ...DEFAULT_FILTERS, query: 'useSession' })))
+      .toEqual(['Feed']);
+  });
+
+  it('finds components by a context they consume, case-insensitively', () => {
+    expect(names(applyFilters([FEED, THEMED, PLAIN], { ...DEFAULT_FILTERS, query: 'themecontext' })))
+      .toEqual(['Themed']);
+  });
+
+  it('still excludes components whose name, path, props and signals all miss', () => {
+    expect(applyFilters([FEED, THEMED, PLAIN], { ...DEFAULT_FILTERS, query: 'useRouter' })).toEqual(
+      [],
+    );
   });
 });
 

@@ -66,4 +66,26 @@ describe('artifact contract', () => {
       expect(typeof f.message).toBe('string');
     }
   });
+
+  it('gives scan-level heuristic findings a field of their own', async () => {
+    const r = await getResult();
+    // Present on EVERY scan, empty on a healthy one — a consumer must be able to
+    // read the field unconditionally rather than sniffing prose out of `warnings`.
+    expect(Array.isArray(r.heuristicWarnings)).toBe(true);
+    for (const h of r.heuristicWarnings) {
+      expect(typeof h.signal).toBe('string');
+      expect(typeof h.dependency).toBe('string');
+      expect(typeof h.scanned).toBe('number');
+      expect(typeof h.message).toBe('string');
+    }
+  });
+
+  it('keeps `warnings` to the prose restatement of `failures` and nothing else', async () => {
+    const r = await getResult();
+    // Once anything else rides on this list, every consumer that caps it (the
+    // MCP relay caps at 20) drops whichever finding happens to sort last.
+    expect([...r.warnings].sort()).toEqual(
+      r.failures.map((f) => `Failed to analyze ${f.name}: ${f.message}`).sort(),
+    );
+  });
 });

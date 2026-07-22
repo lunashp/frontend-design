@@ -129,11 +129,6 @@
   margin: 0 auto;
 }
 
-.warnings {
-  font-size: var(--text-sm);
-  color: var(--warn);
-}
-
 .hero {
   max-width: 620px;
   margin: clamp(var(--space-8), 12vh, 160px) auto 0;

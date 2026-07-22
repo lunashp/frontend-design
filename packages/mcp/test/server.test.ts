@@ -55,6 +55,20 @@ describe('createMcpServer', () => {
     await close();
   });
 
+  it('says what heuristicWarnings is on the scan_project description', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const scan = tools.find((t) => t.name === 'scan_project');
+    const described = String(scan?.description ?? '');
+    // A payload field nobody explains is a field nobody acts on: this one says
+    // a classification signal may be under-reporting, which changes how much an
+    // agent should trust `list_components`' contextDependencyScore filtering.
+    expect(described).toContain('heuristicWarnings');
+
+    await close();
+  });
+
   it('advertises the paging and search arguments on list_components', async () => {
     const { client, close } = await connect();
 

@@ -154,6 +154,99 @@
   border-radius: 4px;
 }
 
+/* Swatch · name · [alpha + value]. The alpha slider lives beside the text field
+   because `<input type="color">` cannot show alpha at all, so without a visible
+   readout a translucent colour reads as fully opaque. */
+.colorEnd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-self: end;
+  min-width: 0;
+}
+.colorEnd .hex {
+  width: 92px;
+  flex: none;
+}
+.alpha {
+  width: 52px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.alphaVal {
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Which interactive state the fields below are editing. */
+.states {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  background: var(--bg);
+}
+.stateTab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: calc(var(--radius-chip) - 2px);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  transition:
+    color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease);
+}
+.stateTab:hover {
+  color: var(--text);
+}
+.stateTabOn {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.stateDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.stateNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.stateNote code {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+/* A state that cannot deliver on the common component shape. Distinct from
+   .stateNote — this is a limitation, not a description, and reading it as
+   ordinary help text is how the user ends up dragging an inert control. */
+.stateWarn {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-input);
+  background: var(--bg);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
 .tokenName {
   font-size: var(--text-sm);
   color: var(--text-dim);

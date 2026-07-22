@@ -44,6 +44,101 @@ function escapeForScript(js: string): string {
 }
 
 /**
+ * Keyboard bridge, iframe -> embedder.
+ *
+ * The preview frame is sandboxed to an opaque origin (allow-scripts, and
+ * deliberately NOT allow-same-origin — that boundary is what lets us render
+ * arbitrary target code at all). One consequence is that its key events never
+ * reach the parent document: the Inspector's Escape and Tab handlers are
+ * registered on the PARENT, so while the preview held focus Escape stopped
+ * closing the slide-over and Tab walked straight out of its focus trap. Granting
+ * same-origin would fix that by giving the previewed component access to the
+ * host page, so the keys travel as messages instead — postMessage is the only
+ * channel that crosses an opaque origin.
+ *
+ * Taking Tab is only safe while something on the other end will move focus, so
+ * the bridge announces itself and stays out of the way until an embedder
+ * answers. That gate is not defensive habit — it is the fix for a real WCAG
+ * 2.1.2 keyboard trap: this sender used to intercept Tab in EVERY preview while
+ * the Inspector only listened in its narrow-viewport modal, so on the default
+ * desktop layout preventDefault() fired and nobody moved focus, forward or
+ * backward. Silence now means the browser's own Tab, which always gets out.
+ *
+ * Exported so it can be driven directly in a test; there is no DOM in this
+ * package, hence plain ES5 with no dependencies.
+ */
+export const PREVIEW_KEYBOARD_BRIDGE = `(function () {
+  // Same selector the Inspector's focus trap uses, so both ends agree on what
+  // counts as a tab stop.
+  var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
+
+  var embedderListening = false;
+
+  function send(message) {
+    // Addressed to the origin this document was served from, never '*'. The
+    // embedder loads the preview by relative URL, so that origin IS the
+    // embedder — and a hostile page that framed the preview instead gets the
+    // message dropped by the browser rather than a handle on our key events.
+    try {
+      parent.postMessage(message, location.protocol + '//' + location.host);
+    } catch (e) {
+      /* opened directly, with no embedder to notify */
+    }
+  }
+
+  function visibleStops() {
+    var all = document.querySelectorAll(FOCUSABLE);
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].offsetParent !== null) out.push(all[i]);
+    }
+    return out;
+  }
+
+  window.addEventListener('message', function (event) {
+    // Identity, not origin: an embedder's message arrives with whatever origin
+    // it was served from, but only the window that framed us can BE 'parent',
+    // and that reference cannot be forged. A nested frame or an unrelated
+    // window therefore cannot talk us into swallowing keys.
+    if (!event || event.source !== parent) return;
+    var data = event.data;
+    if (data && data.type === 'ce:embedder-ready') embedderListening = true;
+  });
+
+  window.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      // Sent regardless of the handshake: Escape is never preventDefault-ed, so
+      // an unheard one costs nothing and cannot strand anybody.
+      send({ type: 'ce:escape' });
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    // No embedder to hand focus to means the browser keeps the key. Doing
+    // anything else here is the keyboard trap described above.
+    if (!embedderListening) return;
+    // Only the EDGES are forwarded: Tab has to keep working inside the preview,
+    // or the sandbox stops being usable for checking a component's own keyboard
+    // behaviour. At an edge the browser would move focus to whatever follows the
+    // iframe in the PARENT document — outside the trap — so the embedder is
+    // asked to place focus itself.
+    var stops = visibleStops();
+    var atEdge =
+      stops.length === 0 ||
+      (event.shiftKey
+        ? document.activeElement === stops[0]
+        : document.activeElement === stops[stops.length - 1]);
+    if (!atEdge) return;
+    event.preventDefault();
+    send({ type: 'ce:tab-out', shiftKey: !!event.shiftKey });
+  });
+
+  // Opens the handshake. The embedder attaches its listener when the component
+  // is selected, which is before it can possibly have rendered this frame, so
+  // by the time this runs there is someone to hear it.
+  send({ type: 'ce:preview-ready' });
+})();`;
+
+/**
  * Bundle the component and return a complete HTML document that mounts it.
  * Throws with esbuild's messages if the bundle can't be built.
  */
@@ -181,6 +276,9 @@ window.addEventListener('message', function (e) {
     return;
   }
 });
+</script>
+<script>
+${PREVIEW_KEYBOARD_BRIDGE}
 </script>
 ${warningScript}<script>${escapeForScript(js)}</script>
 </body>

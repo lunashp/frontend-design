@@ -23,13 +23,18 @@ export const DEFAULT_FILTERS: FilterState = {
 };
 
 /**
- * Name + path + prop names. Prop names are the best discriminator when you
- * don't know what a component is called: "onClose" finds the Dialog you had
- * been searching for as "Modal".
+ * Name + path + prop names + the signals behind the classification. Prop names
+ * are the best discriminator when you don't know what a component is called:
+ * "onClose" finds the Dialog you had been searching for as "Modal". Hooks and
+ * consumed contexts answer the other question — "what here touches auth?" —
+ * which is otherwise unanswerable from the gallery even though the scan already
+ * knows: searching "useSession" or "ThemeContext" is how you find every
+ * component that would need that provider stubbed.
  */
 function haystack(c: ComponentSummary): string {
   const propNames = c.propModel.props.map((p) => p.name).join(' ');
-  return `${c.descriptor.name} ${c.descriptor.filePath} ${propNames}`.toLowerCase();
+  const signals = [...c.signals.hookNames, ...c.signals.contextConsumers].join(' ');
+  return `${c.descriptor.name} ${c.descriptor.filePath} ${propNames} ${signals}`.toLowerCase();
 }
 
 export function applyFilters(

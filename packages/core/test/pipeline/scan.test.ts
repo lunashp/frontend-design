@@ -7,6 +7,7 @@ import { EngineSession } from '../../src/pipeline/session.js';
 import { AdapterRegistry } from '../../src/adapters/registry.js';
 import { reactAdapter } from '../../src/adapters/react/react-adapter.js';
 import type { FrameworkAdapter } from '../../src/types/adapter.js';
+import type { ClassificationSignals, ComponentDescriptor } from '../../src/types/component.js';
 import type { ScanResult } from '../../src/types/artifact.js';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/simple-react');
@@ -32,6 +33,7 @@ describe('scanProject (simple-react fixture)', () => {
       'Button',
       'Card',
       'Chip',
+      'StyledPanel',
       'StyledTag',
       'StyledTagLink',
       'ThemedNote',
@@ -49,6 +51,17 @@ describe('scanProject (simple-react fixture)', () => {
     expect(tag!.descriptor.filePath).toMatch(/StyledTag\.tsx$/);
     // `styled(Component)` is a different tag shape and must be caught too.
     expect(r.components.some((c) => c.descriptor.name === 'StyledTagLink')).toBe(true);
+  });
+
+  it('discovers a styled factory exported directly as the default', async () => {
+    const r = await getResult();
+    // ts-morph exports this one as the TaggedTemplateExpression itself, with no
+    // variable declaration wrapping it — the shape discovery used to fall
+    // through on, silently losing every `export default styled.x\`…\`` file.
+    const panel = r.components.find((c) => c.descriptor.name === 'StyledPanel');
+    expect(panel).toBeDefined();
+    expect(panel!.descriptor.exportName).toBe('default');
+    expect(panel!.descriptor.filePath).toMatch(/StyledPanel\.tsx$/);
   });
 
   it('names an anonymous default export after its folder', async () => {
@@ -183,5 +196,93 @@ describe('scanProject — analysis failures', () => {
     expect(r.warnings).toEqual(['Failed to analyze Badge: checker exploded']);
     // And the component is absent rather than listed with fabricated metadata.
     expect(r.components.some((c) => c.descriptor.name === 'Badge')).toBe(false);
+  });
+});
+
+/**
+ * Grading the detectors themselves is a property of the whole corpus, not of any
+ * one component, and `detectDegenerateHeuristics` deliberately stays silent below
+ * 40 components — more than any on-disk fixture here has. So the corpus is
+ * synthesised by the adapter instead: what is under test is where the finding
+ * LANDS on a ScanResult, not the detector, which `classify/heuristic-health` owns.
+ */
+describe('scanProject — scan-level heuristic findings', () => {
+  const STORE_FIXTURE = path.resolve(import.meta.dirname, '../fixtures/store-target');
+
+  const SILENT_SIGNALS: ClassificationSignals = {
+    childComponentCount: 0,
+    jsxDepth: 1,
+    hookNames: [],
+    usesRouter: false,
+    usesStore: false,
+    usesDataFetching: false,
+    contextConsumers: [],
+    isClientComponent: true,
+    propCount: 0,
+  };
+
+  function unreachable(method: string): never {
+    throw new Error(`${method} is never called by scan()`);
+  }
+
+  /** Reports `count` components on which every graded signal reads false. */
+  function silentAdapter(count: number): FrameworkAdapter {
+    const descriptors: ComponentDescriptor[] = Array.from({ length: count }, (_, i) => ({
+      id: `/s/C${i}.tsx#C${i}`,
+      name: `C${i}`,
+      filePath: `/s/C${i}.tsx`,
+      exportName: `C${i}`,
+      isDefaultExport: false,
+      loc: { file: `/s/C${i}.tsx`, line: 1, column: 1 },
+    }));
+    return {
+      id: 'react',
+      detect: () => ({ matches: true, confidence: 1 }),
+      createProgram: (project) => ({ framework: 'react', project, handle: null }),
+      discoverComponents: () => descriptors,
+      extractProps: () => ({ props: [] }),
+      extractSignals: () => SILENT_SIGNALS,
+      styleStrategies: () => [],
+      sandpackTemplate: () => 'react-ts',
+      buildEntry: () => unreachable('buildEntry'),
+      generateProviderStubs: () => unreachable('generateProviderStubs'),
+    };
+  }
+
+  it('puts a collapsed detector on its own typed field, never as prose in warnings', async () => {
+    const session = await EngineSession.create(
+      { rootPath: STORE_FIXTURE },
+      { workspaceRoot: WS, registry: new AdapterRegistry().register(silentAdapter(60)) },
+    );
+    const r = await session.scan();
+
+    expect(r.heuristicWarnings).toHaveLength(1);
+    const [h] = r.heuristicWarnings;
+    expect(h!.signal).toBe('usesStore');
+    expect(h!.dependency).toBe('zustand');
+    expect(h!.scanned).toBe(60);
+    expect(h!.message).toMatch(/zustand/);
+
+    // The defect this replaces: the finding was appended LAST to the untyped
+    // `warnings`, so every consumer that caps that list cut the finding first —
+    // on exactly the large targets whose scale makes it diagnostic.
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('stays empty when every graded detector still fires', async () => {
+    const firing = silentAdapter(60);
+    const session = await EngineSession.create(
+      { rootPath: STORE_FIXTURE },
+      {
+        workspaceRoot: WS,
+        registry: new AdapterRegistry().register({
+          ...firing,
+          extractSignals: () => ({ ...SILENT_SIGNALS, usesStore: true }),
+        }),
+      },
+    );
+    const r = await session.scan();
+
+    expect(r.heuristicWarnings).toEqual([]);
   });
 });

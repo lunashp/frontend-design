@@ -40,6 +40,52 @@
   color: var(--text-dim);
 }
 
+/* The equation reads as one line of maths, so the terms sit tight against the
+   total and wrap as a unit rather than as a list. */
+.breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+.total {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.eq {
+  color: var(--text-faint);
+}
+
+.term {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+}
+
+.weight {
+  color: var(--text-faint);
+}
+
+.meter[data-tone='warn'] .weight,
+.meter[data-tone='danger'] .weight {
+  color: var(--warn);
+}
+
+.none {
+  font-family: var(--font-mono);
+  color: var(--ok);
+}
+
 .compact .track {
   gap: 2px;
 }

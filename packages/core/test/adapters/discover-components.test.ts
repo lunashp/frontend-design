@@ -33,6 +33,41 @@ describe('discoverComponents — styled-components / emotion', () => {
     expect(names.sort()).toEqual(['Base', 'Fancy', 'Input']);
   });
 
+  it('discovers a styled factory exported directly as the default', () => {
+    // ts-morph hands back the TaggedTemplateExpression ITSELF here — there is no
+    // VariableDeclaration to look inside — so a dispatch that only inspects
+    // variable initializers falls through to null and the component vanishes.
+    const names = discover({
+      '/proj/src/Panel.tsx': [
+        `import styled from 'styled-components';`,
+        'export default styled.div`color: red;`;',
+      ].join('\n'),
+    });
+    expect(names).toEqual(['Panel']);
+  });
+
+  it('discovers a default-exported styled(Component) wrapper', () => {
+    const names = discover({
+      '/proj/src/Base.tsx': [
+        `import styled from 'styled-components';`,
+        'export const Base = styled.span`color: red;`;',
+      ].join('\n'),
+      '/proj/src/fancy-base/index.tsx': [
+        `import styled from 'styled-components';`,
+        `import { Base } from '../Base';`,
+        'export default styled(Base)`font-weight: 700;`;',
+      ].join('\n'),
+    });
+    expect(names.sort()).toEqual(['Base', 'FancyBase']);
+  });
+
+  it('does not mistake a default-exported non-styled tagged template for a component', () => {
+    const names = discover({
+      '/proj/src/Query.tsx': ['export default gql`{ me { id } }`;'].join('\n'),
+    });
+    expect(names).toEqual([]);
+  });
+
   it('does not mistake other tagged templates for components', () => {
     const names = discover({
       '/proj/src/Styles.ts': [

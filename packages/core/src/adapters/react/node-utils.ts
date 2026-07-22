@@ -44,6 +44,11 @@ export function componentBodyOf(decl: ExportedDeclarations): Node | null {
   ) {
     return decl;
   }
+  // `export default styled.div\`…\`` — ts-morph hands back the tagged template
+  // ITSELF as the exported declaration, so the styled branch below (which only
+  // inspects a variable's initializer) never sees it and the file fell through
+  // to `null`, dropping every default-exported styled component from discovery.
+  if (isStyledFactory(decl)) return decl;
   if (Node.isVariableDeclaration(decl)) {
     const init = decl.getInitializer();
     if (init && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) return init;

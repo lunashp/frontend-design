@@ -129,6 +129,12 @@ export const DESIGN_STATES: readonly DesignState[] = ['hover', 'focus', 'active'
 /**
  * Selector suffix per state. `focus` uses `:focus-visible` deliberately — a
  * mouse click should not paint the focus treatment.
+ *
+ * Caveat, verified in headless Chromium: `:focus-visible` matches only the
+ * focused element itself and never propagates to an ancestor, so a `focus:`
+ * override paints nothing for a component whose root is a non-focusable wrapper
+ * `<div>` — the common shape. Consumers that surface these states to a human
+ * must say so; `design-state.ts` in the web app carries that disclosure.
  */
 export const DESIGN_STATE_SELECTORS: Readonly<Record<DesignState, string>> = {
   hover: ':hover',
@@ -183,14 +189,43 @@ export function splitDesignOverrides(overrides: Readonly<Record<string, string>>
 
 const IMPORTANT = ' !important';
 
-/** Build the list of CSS declarations for the set overrides (each with !important). */
-export function emitDesignDeclarations(overrides: Readonly<Record<string, string>> = {}): string[] {
+/**
+ * `scale` and `opacity` are percentages whose 100 means "unchanged". Emitting
+ * `transform: scale(1) !important` at 100 would wipe out whatever transform the
+ * component sets for itself, so the identity value is elided.
+ */
+const IDENTITY_PERCENT = 100;
+
+/**
+ * What `field` already is in the resting state — the baseline a state block is
+ * measured against. Unset or blank means the resting state carries no override
+ * of its own, so the baseline is the identity.
+ */
+function restingPercent(resting: Readonly<Record<string, string>>, field: string): number {
+  const raw = resting[field];
+  return raw === undefined || raw === '' ? IDENTITY_PERCENT : Number(raw);
+}
+
+/**
+ * Build the list of CSS declarations for the set overrides (each with !important).
+ *
+ * `resting` is the resting-state map a state block sits on top of, and it exists
+ * for one reason: the identity elision above has to be RELATIVE. Measured
+ * absolutely, `hover:scale = 100` emitted nothing, so "enlarged at rest, normal
+ * on hover" could not be authored and the Hover tab's Scale slider silently did
+ * nothing at exactly the value it renders at. Left at its default `{}`, every
+ * baseline is the identity and the resting state behaves exactly as before.
+ */
+export function emitDesignDeclarations(
+  overrides: Readonly<Record<string, string>> = {},
+  resting: Readonly<Record<string, string>> = {},
+): string[] {
   const o = overrides;
   const has = (k: string) => o[k] !== undefined && o[k] !== '';
   const n = (k: string) => Number(o[k]);
   const d: string[] = [];
 
-  if (has('scale') && n('scale') !== 100) {
+  if (has('scale') && n('scale') !== restingPercent(resting, 'scale')) {
     d.push(`transform: scale(${n('scale') / 100})${IMPORTANT}`);
     d.push(`transform-origin: top left${IMPORTANT}`);
   }
@@ -217,7 +252,9 @@ export function emitDesignDeclarations(overrides: Readonly<Record<string, string
     const sv = o.shadow ?? '';
     d.push(`box-shadow: ${SHADOW_PRESETS[sv] ?? sv}${IMPORTANT}`);
   }
-  if (has('opacity') && n('opacity') !== 100) d.push(`opacity: ${n('opacity') / 100}${IMPORTANT}`);
+  if (has('opacity') && n('opacity') !== restingPercent(resting, 'opacity')) {
+    d.push(`opacity: ${n('opacity') / 100}${IMPORTANT}`);
+  }
 
   return d;
 }
@@ -233,7 +270,13 @@ export interface DesignBlock {
 
 /**
  * The rules an override map implies: the resting block first, then one block
- * per interactive state that has any override. Empty blocks are dropped.
+ * per interactive state that has any override. Empty blocks are dropped, so this
+ * — not the presence of a key — is the only honest answer to "does this override
+ * map paint anything in state X?".
+ *
+ * Each state block is emitted against the resting map, so a state value that
+ * merely restores the resting value drops out while one that returns the
+ * component to its natural size/opacity is kept.
  */
 export function emitDesignBlocks(overrides: Readonly<Record<string, string>> = {}): DesignBlock[] {
   const { base, states } = splitDesignOverrides(overrides);
@@ -242,8 +285,17 @@ export function emitDesignBlocks(overrides: Readonly<Record<string, string>> = {
   if (baseDeclarations.length > 0) {
     blocks.push({ state: null, selectorSuffix: '', declarations: baseDeclarations });
   }
+  // A state declaration byte-identical to the resting one paints nothing — the
+  // resting rule already sets it. `scale` and `opacity` carry an identity value
+  // the emitter recognises per field; the other eleven do not, so only comparing
+  // the emitted blocks catches them. It matters because the state sliders start
+  // at the resting value: "drag it and put it back" would otherwise leave a dead
+  // `:hover` rule, and a dead rule still lights the "has overrides" dot.
+  const restingDeclarations = new Set(baseDeclarations);
   for (const state of DESIGN_STATES) {
-    const declarations = emitDesignDeclarations(states[state] ?? {});
+    const declarations = emitDesignDeclarations(states[state] ?? {}, base).filter(
+      (d) => !restingDeclarations.has(d),
+    );
     if (declarations.length === 0) continue;
     blocks.push({ state, selectorSuffix: DESIGN_STATE_SELECTORS[state], declarations });
   }

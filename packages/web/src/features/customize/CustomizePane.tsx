@@ -7,7 +7,7 @@ import {
   EMPTY_CUSTOMIZATION,
   type CustomizationState,
 } from '../../lib/customize.js';
-import { emitDesignCss, emitDesignRule } from '../../lib/design-overrides.js';
+import { emitDesignRule } from '../../lib/design-overrides.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
 import { DesignControls } from './DesignControls.js';
@@ -41,7 +41,9 @@ export function CustomizePane({
   }, [state.propValues]);
 
   const tokens = artifact.tokenModel.tokens;
-  const design = state.designOverrides ?? {};
+  // Memoized so the preview's design payload keeps a stable identity across
+  // re-renders — `?? {}` would otherwise mint a fresh object every time.
+  const design = useMemo(() => state.designOverrides ?? {}, [state.designOverrides]);
 
   // Token overrides keyed by CSS var name (what the iframe applies), from live state.
   const tokenOverrides = useMemo(() => {
@@ -53,9 +55,16 @@ export function CustomizePane({
     return byName;
   }, [state.tokenOverrides, tokens]);
 
-  const designCss = useMemo(() => emitDesignCss(design), [design]);
-
   const dirty = isCustomized(state);
+
+  // Gated on what the emitter actually produces, not on key presence: a stored
+  // no-op (a state value equal to the resting one) leaves keys behind while
+  // emitting nothing, and offering "Copy design CSS" for an empty string is a
+  // button that silently does nothing.
+  const designRule = useMemo(
+    () => emitDesignRule(artifact.descriptor.name, design),
+    [artifact.descriptor.name, design],
+  );
 
   const setToken = (id: string, value: string) =>
     onChange({ ...state, tokenOverrides: { ...state.tokenOverrides, [id]: value } });
@@ -81,7 +90,7 @@ export function CustomizePane({
           projectRoot={projectRoot}
           id={artifact.descriptor.id}
           tokenOverrides={tokenOverrides}
-          designCss={designCss}
+          designOverrides={design}
           propOverrides={debouncedProps}
         />
       )}
@@ -115,9 +124,7 @@ export function CustomizePane({
         >
           Reset
         </button>
-        {Object.keys(design).length > 0 && (
-          <CopyButton text={emitDesignRule(artifact.descriptor.name, design)} label="Copy design CSS" />
-        )}
+        {designRule !== '' && <CopyButton text={designRule} label="Copy design CSS" />}
         {tokens.length > 0 && (
           <CopyButton
             text={emitRootCss(tokens, state.tokenOverrides)}
@@ -128,7 +135,8 @@ export function CustomizePane({
 
       <p className={styles.hint}>
         <strong>Design</strong> edits apply directly to the rendered component — size, colour,
-        spacing, and more — even when it exposes no tokens. <strong>Token</strong> edits change only{' '}
+        spacing, and more — even when it exposes no tokens, and each interactive state
+        (hover · focus · active) is styled on its own tab. <strong>Token</strong> edits change only{' '}
         <code>tokens.css</code>, so the copied component stays re-themeable.
       </p>
     </div>

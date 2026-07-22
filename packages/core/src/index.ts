@@ -31,7 +31,22 @@ export { loadProject, type LoadProjectOptions } from './project/load-project.js'
 export { classify } from './classify/classifier.js';
 export { atomicLevel } from './classify/atomic-level.js';
 export { componentKind } from './classify/kind.js';
-export { contextDependencyScore } from './classify/context-score.js';
+export {
+  contextDependencyScore,
+  // The per-signal breakdown behind a score, so a consumer can render
+  // "4.5 = store subscription +3 + useAuth +1.5" without keeping a second copy
+  // of the weights that drifts the first time one of them is tuned.
+  explainContextScore,
+  type ContextScoreContribution,
+} from './classify/context-score.js';
+// Scan-level grading of the signal detectors themselves. Its prose already
+// rides on `ScanResult.warnings`; the typed form is exported so a consumer can
+// group/link the findings instead of pattern-matching the sentence back apart.
+export {
+  detectDegenerateHeuristics,
+  type HeuristicWarning,
+  type GradedSignal,
+} from './classify/heuristic-health.js';
 
 // Portability + sandbox (P2)
 export { buildImportGraph, type ImportGraph } from './graph/import-graph.js';

@@ -57,6 +57,39 @@ export interface ScanFailure {
   readonly message: string;
 }
 
+/**
+ * The `ClassificationSignals` fields that `detectDegenerateHeuristics` grades.
+ * Written as a `Pick` rather than a bare union so renaming a signal is a compile
+ * error here instead of a silently un-gradable detector.
+ */
+export type GradedSignal = keyof Pick<
+  ClassificationSignals,
+  'usesRouter' | 'usesStore' | 'usesDataFetching'
+>;
+
+/**
+ * A signal detector that a whole scan proved is no longer matching: zero hits
+ * across the corpus while the target declares a dependency that exists to be
+ * detected. Scan-LEVEL, so it belongs to the scan and not to any component.
+ *
+ * It lives here, in the wire contract, rather than beside the detector because
+ * it is something every consumer receives. `message` rides along with the
+ * structured fields on purpose: the web app cannot import @ce/core (Node-only
+ * deps never reach the browser bundle), so dropping it would mean re-authoring
+ * the sentence in a hand-maintained mirror — the exact duplication this repo
+ * already pays for elsewhere. One author, two presentations.
+ */
+export interface HeuristicWarning {
+  /** The signal that never fired. */
+  readonly signal: GradedSignal;
+  /** The declared dependency that contradicts the zero. */
+  readonly dependency: string;
+  /** How many components the zero is out of. */
+  readonly scanned: number;
+  /** States BOTH explanations — it never asserts a bug it cannot prove. */
+  readonly message: string;
+}
+
 /** Result of a whole-project scan (P1). */
 export interface ScanResult {
   readonly artifactVersion: ArtifactVersion;
@@ -65,6 +98,20 @@ export interface ScanResult {
   readonly components: readonly ComponentSummary[];
   /** Structured per-component analysis failures. */
   readonly failures: readonly ScanFailure[];
-  /** Human-readable notes, including a prose form of every `failures` entry. */
+  /**
+   * The prose restatement of every `failures` entry — the human log — and
+   * NOTHING else. Scan-level findings used to be appended here too, last, where
+   * every consumer that caps this list (the MCP relay caps at 20) dropped them
+   * first: on a target with 25 failures the one finding worth reading never
+   * reached the wire. Anything that is not per-component prose gets its own
+   * typed field instead; see `heuristicWarnings`.
+   */
   readonly warnings: readonly string[];
+  /**
+   * Detectors that produced zero hits across the whole scan while the project
+   * declares a library that exists to be detected. Empty on a healthy scan, and
+   * bounded by the number of graded signals rather than by project size — so it
+   * is never worth truncating.
+   */
+  readonly heuristicWarnings: readonly HeuristicWarning[];
 }

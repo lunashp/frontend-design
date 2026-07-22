@@ -11,6 +11,7 @@ import {
   designStateKey,
   emitDesignBlocks,
   emitDesignCss,
+  emitDesignDeclarations,
   emitDesignRule,
   emitDesignStyleSheet,
   isDesignKey,
@@ -236,6 +237,68 @@ describe('interactive states (hover / focus / active)', () => {
     expect(DESIGN_FIELDS).toHaveLength(13);
     expect(DESIGN_FIELDS).toContain('borderWidth');
     expect(DESIGN_FIELDS).not.toContain('borderRadius');
+  });
+});
+
+/**
+ * `scale` and `opacity` carry an identity value (100) that must not emit — an
+ * unconditional `transform: scale(1) !important` would wipe out whatever
+ * transform the component sets for itself. That elision used to be ABSOLUTE, so
+ * `hover:scale = 100` was inexpressible: "enlarged at rest, normal on hover"
+ * could not be authored at all, and the Hover tab's Scale slider silently did
+ * nothing at exactly the value it is rendered at. Measured against the RESTING
+ * value instead, a state declaration is dropped only when it really is no change.
+ */
+describe('no-op elision is relative to the resting state', () => {
+  it('emits a state scale that returns the component to its natural size', () => {
+    const sheet = emitDesignStyleSheet({ scale: '120', 'hover:scale': '100' });
+    expect(sheet).toContain('#root > * { transform: scale(1.2) !important');
+    expect(sheet).toContain('#root > *:hover { transform: scale(1) !important');
+  });
+
+  it('emits a state opacity that returns the component to fully opaque', () => {
+    const sheet = emitDesignStyleSheet({ opacity: '50', 'focus:opacity': '100' });
+    expect(sheet).toContain('#root > *:focus-visible { opacity: 1 !important');
+  });
+
+  it('drops a state value equal to the resting one — same as rest is no change', () => {
+    expect(emitDesignStyleSheet({ scale: '120', 'hover:scale': '120' })).toBe(
+      '#root > * { transform: scale(1.2) !important; transform-origin: top left !important; }',
+    );
+    expect(emitDesignStyleSheet({ opacity: '50', 'active:opacity': '50' })).toBe(
+      '#root > * { opacity: 0.5 !important; }',
+    );
+  });
+
+  it('drops a no-op state value for every field, not only the percentages', () => {
+    // `scale` and `opacity` have an identity value the emitter can recognise on
+    // its own. The other eleven fields do not, so a `:hover` rule repeating the
+    // resting declaration verbatim is only detectable by comparing the emitted
+    // blocks — and a dead rule still lights the "has overrides" dot.
+    expect(emitDesignStyleSheet({ radius: '8', 'hover:radius': '8' })).toBe(
+      '#root > * { border-radius: 8px !important; }',
+    );
+    expect(emitDesignStyleSheet({ background: '#eee', 'focus:background': '#eee' })).toBe(
+      '#root > * { background: #eee !important; }',
+    );
+    // …while a state value that genuinely differs still paints.
+    expect(emitDesignStyleSheet({ radius: '8', 'hover:radius': '12' })).toBe(
+      '#root > * { border-radius: 8px !important; }\n' +
+        '#root > *:hover { border-radius: 12px !important; }',
+    );
+  });
+
+  it('falls back to the identity when the resting value is unset or blank', () => {
+    expect(emitDesignStyleSheet({ 'hover:scale': '100' })).toBe('');
+    expect(emitDesignStyleSheet({ scale: '', 'active:opacity': '100' })).toBe('');
+  });
+
+  it('takes the resting map directly, so the emitter stays a pure function', () => {
+    expect(emitDesignDeclarations({ scale: '100' }, { scale: '120' })).toEqual([
+      'transform: scale(1) !important',
+      'transform-origin: top left !important',
+    ]);
+    expect(emitDesignDeclarations({ scale: '100' })).toEqual([]);
   });
 });
 

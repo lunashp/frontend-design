@@ -100,6 +100,13 @@ export function toScanSummary(r: ScanResult) {
     warningCount: r.warnings.length,
     warnings: r.warnings.slice(0, MAX_NOTES),
     warningsTruncated: r.warnings.length > MAX_NOTES,
+    // Deliberately NOT capped. These are scan-LEVEL findings, bounded by the
+    // number of graded detectors (3) rather than by project size, so a cap
+    // could only ever drop signal for no budget saving. They used to ride on
+    // `warnings` as prose appended last, which meant a target with more than
+    // MAX_NOTES failures pushed them off the wire entirely — the agent never
+    // learned that a classification signal was under-reporting.
+    heuristicWarnings: r.heuristicWarnings.map((h) => ({ ...h })),
   };
 }
 

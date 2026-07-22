@@ -1,5 +1,6 @@
 import type { Token, TokenCategory, TokenUsage } from '../../api/types.js';
 import { sortTokensByUsage } from '../../lib/customize.js';
+import { ColorControl } from './ColorControl.js';
 import styles from './Customize.module.css';
 
 const ORDER: TokenCategory[] = ['color', 'radius', 'typography', 'size', 'spacing', 'shadow', 'other'];
@@ -15,10 +16,6 @@ const LABEL: Record<TokenCategory, string> = {
 
 /** Enough to recognise the token; the count carries the rest. */
 const MAX_USAGES = 3;
-
-function isHex(value: string): boolean {
-  return /^#[0-9a-f]{6}$/i.test(value.trim());
-}
 
 /** Usage paths are bundle-relative (`/src/ui/Button.module.css`) — drop the root slash. */
 function shortUsagePath(file: string): string {
@@ -67,25 +64,13 @@ function TokenControl({
 }) {
   if (token.category === 'color') {
     return (
-      <div className={styles.row}>
-        <input
-          type="color"
-          className={styles.swatch}
-          value={isHex(value) ? value : '#000000'}
-          onChange={(e) => onChange(e.target.value)}
-          aria-label={`${token.displayName} color`}
-        />
-        <span className={styles.tokenName} title={token.name}>
-          {token.displayName}
-        </span>
-        <input
-          type="text"
-          className={styles.hex}
-          value={value}
-          spellCheck={false}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      </div>
+      <ColorControl
+        label={token.displayName}
+        title={token.name}
+        value={value}
+        fallback="#000000"
+        onChange={onChange}
+      />
     );
   }
   return (

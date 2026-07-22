@@ -3,6 +3,7 @@ import { useScan } from './features/scan/useScan.js';
 import { ScanForm } from './features/scan/ScanForm.js';
 import { Filters } from './features/gallery/Filters.js';
 import { CollectionSummary } from './features/gallery/CollectionSummary.js';
+import { ScanIssues } from './features/gallery/ScanIssues.js';
 import { GalleryGrid } from './features/gallery/GalleryGrid.js';
 import { Inspector, type Tab } from './features/inspector/Inspector.js';
 import { applyFilters, DEFAULT_FILTERS, type FilterState } from './lib/filter.js';
@@ -127,12 +128,16 @@ export function App() {
         ) : result ? (
           <div className={styles.catalogue}>
             <CollectionSummary components={result.components} shown={filtered.length} />
-            {result.warnings.length > 0 && (
-              <p className={styles.warnings}>
-                {result.warnings.length} component
-                {result.warnings.length === 1 ? '' : 's'} could not be fully analyzed.
-              </p>
-            )}
+            {/* Failures are named, not counted: `warnings.length` was never a
+                component count in the first place, and a bare number can't be
+                acted on. Scan-level findings come in typed and separate, so the
+                panel never has to tell them apart from failure prose by text. */}
+            <ScanIssues
+              failures={result.failures}
+              heuristicWarnings={result.heuristicWarnings}
+              projectRoot={result.projectRoot}
+              analyzed={result.components.length}
+            />
             <GalleryGrid
               components={filtered}
               projectRoot={result.projectRoot}

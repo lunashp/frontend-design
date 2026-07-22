@@ -132,7 +132,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
     {
       title: 'Scan project',
       description:
-        'Scan a React+TS project (read-only): discover and classify its components. Returns compact stats — counts by atomic level and kind, plus `failures[]` naming every component that could not be analysed. Run this first; the other tools reuse the cached scan. On a large project the first scan can take minutes and emits progress notifications.',
+        'Scan a React+TS project (read-only): discover and classify its components. Returns compact stats — counts by atomic level and kind, plus `failures[]` naming every component that could not be analysed. Also returns `heuristicWarnings[]` (never truncated): scan-LEVEL findings where a classification signal (usesStore / usesRouter / usesDataFetching) matched 0 of N components while the project declares a library that exists to be detected — meaning either nothing uses it, or that signal is under-reporting and the derived contextDependencyScore is too low across the board. Run this first; the other tools reuse the cached scan. On a large project the first scan can take minutes and emits progress notifications.',
       inputSchema: {
         projectPath: z
           .string()

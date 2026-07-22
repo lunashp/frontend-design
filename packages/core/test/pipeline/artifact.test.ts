@@ -3,6 +3,9 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { EngineSession } from '../../src/pipeline/session.js';
+import { AdapterRegistry } from '../../src/adapters/registry.js';
+import { reactAdapter } from '../../src/adapters/react/react-adapter.js';
+import type { FrameworkAdapter, ProviderStubResult } from '../../src/types/adapter.js';
 import type { ComponentArtifact } from '../../src/types/artifact.js';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/simple-react');
@@ -108,5 +111,63 @@ describe('buildArtifact — sandpack spec', () => {
     const entry = art.sandpack.files['/index.tsx'] as string;
     // Badge has a required `children` node prop -> filled with the component name.
     expect(entry).toContain('"children": "Badge"');
+  });
+});
+
+/**
+ * The scaffolder reads the stubber's verdict, but only if the pipeline hands it
+ * over: `buildArtifact` used to pass `providers.dependencies` and drop
+ * `providers` itself, so in the real app `input.providers` was always undefined
+ * and two of the scaffolder's branches were unit-tested dead code. These are
+ * pipeline-level on purpose — a scaffolder unit test cannot catch a caller that
+ * never calls.
+ */
+describe('buildArtifact — the provider stub result reaches the sandbox spec', () => {
+  async function sessionWith(providers: ProviderStubResult): Promise<EngineSession> {
+    const adapter: FrameworkAdapter = {
+      ...reactAdapter,
+      generateProviderStubs: () => providers,
+    };
+    return EngineSession.create(
+      { rootPath: FIXTURE },
+      { workspaceRoot: WS, registry: new AdapterRegistry().register(adapter) },
+    );
+  }
+
+  async function buildWith(providers: ProviderStubResult): Promise<ComponentArtifact> {
+    const s = await sessionWith(providers);
+    const scan = await s.scan();
+    const id = scan.components.find((c) => c.descriptor.name === 'UserPanel')!.descriptor.id;
+    return s.buildArtifact(id);
+  }
+
+  const NONE: ProviderStubResult = {
+    providersFile: '',
+    wrapperJsxOpen: '',
+    wrapperJsxClose: '',
+    imports: '',
+    dependencies: {},
+    unresolved: [],
+  };
+
+  it('says a context component was rendered bare when the stubber produced no wrapper', async () => {
+    // The fixture's contexts yield no wrappable provider, so the honest note is
+    // "rendered bare" — which the app could never emit while `providers` was
+    // being dropped on the way in.
+    const art = await buildWith(NONE);
+    expect(art.sandpack.renderability).toBe('stubbed');
+    expect(art.sandpack.notes.join(' ')).toMatch(/no provider could be generated — rendered bare/);
+  });
+
+  it('names context the stubber left unresolved instead of claiming full fidelity', async () => {
+    const art = await buildWith({
+      ...NONE,
+      providersFile: 'function Providers() {}',
+      wrapperJsxOpen: '<Providers>',
+      wrapperJsxClose: '</Providers>',
+      unresolved: ['AuthContext'],
+    });
+    expect(art.sandpack.renderability).toBe('stubbed');
+    expect(art.sandpack.notes.join(' ')).toMatch(/Context left unresolved: AuthContext/);
   });
 });

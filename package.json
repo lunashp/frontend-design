@@ -13,6 +13,7 @@
     "dev": "turbo run dev",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "tsc -p packages/web/tsconfig.e2e.json --noEmit && tsx packages/web/e2e/keyboard-trap.spec.ts",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\""

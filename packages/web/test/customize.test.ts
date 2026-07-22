@@ -1,18 +1,37 @@
 import { describe, it, expect } from 'vitest';
 import {
   emitRootCss,
-  patchEntryProps,
-  injectTokenOverrides,
-  customizeSpec,
   getCustomization,
   setCustomization,
   isCustomized,
   sortTokensByUsage,
+  previewDesignMessage,
   EMPTY_CUSTOMIZATION,
   type CustomizationMap,
 } from '../src/lib/customize.js';
-import { emitDesignCss, emitDesignRule } from '../src/lib/design-overrides.js';
-import type { ComponentArtifact, Token } from '../src/api/types.js';
+import {
+  emitDesignCss,
+  emitDesignRule,
+  DESIGN_GROUPS,
+  DESIGN_STATES,
+  type DesignField,
+  type DesignState,
+} from '../src/lib/design-overrides.js';
+import {
+  DESIGN_STATE_TABS,
+  designFieldBindings,
+  designStateCaveat,
+  statesWithOverrides,
+} from '../src/features/customize/design-state.js';
+import {
+  alphaPercent,
+  formatColorValue,
+  parseColorValue,
+  swatchValue,
+  withAlphaPercent,
+  withPickedColor,
+} from '../src/features/customize/color-value.js';
+import type { Token } from '../src/api/types.js';
 
 function token(id: string, name: string, value: string): Token {
   return {
@@ -36,60 +55,6 @@ describe('emitRootCss', () => {
   });
   it('handles no tokens', () => {
     expect(emitRootCss([], {})).toBe(':root {\n}\n');
-  });
-});
-
-describe('patchEntryProps', () => {
-  const entry = 'const props = {\n  "variant": "primary",\n  "size": "sm"\n};\n';
-  it('merges prop values into the props literal', () => {
-    const out = patchEntryProps(entry, { variant: 'secondary' });
-    expect(out).toContain('"variant": "secondary"');
-    expect(out).toContain('"size": "sm"');
-  });
-  it('is a no-op with no prop values', () => {
-    expect(patchEntryProps(entry, {})).toBe(entry);
-  });
-});
-
-describe('injectTokenOverrides', () => {
-  const entry = 'const props = {};\nconst root = createRoot(el);\nroot.render(<C {...props} />);\n';
-  it('injects setProperty calls for overridden tokens before mount', () => {
-    const out = injectTokenOverrides(entry, TOKENS, { t1: '#e11d48' });
-    expect(out).toContain('setProperty');
-    expect(out).toContain('--color-1');
-    expect(out).toContain('#e11d48');
-    // Injected before the createRoot call.
-    expect(out.indexOf('setProperty')).toBeLessThan(out.indexOf('createRoot'));
-  });
-  it('is a no-op with no overrides', () => {
-    expect(injectTokenOverrides(entry, TOKENS, {})).toBe(entry);
-  });
-});
-
-describe('customizeSpec', () => {
-  const artifact = {
-    tokenModel: { tokens: TOKENS },
-    sandpack: {
-      files: {
-        '/index.tsx': 'const props = {};\nconst root = createRoot(el);',
-        '/tokens.css': ':root {\n  --color-1: #3b82f6;\n}\n',
-      },
-      entryPath: '/index.tsx',
-      template: 'react-ts',
-      dependencies: {},
-      renderability: 'full',
-      notes: [],
-    },
-  } as unknown as ComponentArtifact;
-
-  it('rewrites tokens.css and entry from customization state', () => {
-    const spec = customizeSpec(artifact, {
-      tokenOverrides: { t1: '#e11d48' },
-      propValues: {},
-    });
-    expect(spec.files['/tokens.css']).toContain('--color-1: #e11d48;');
-    expect(spec.files['/index.tsx']).toContain('setProperty');
-    expect(spec.files['/index.tsx']).toContain('#e11d48');
   });
 });
 
@@ -201,5 +166,226 @@ describe('emitDesignRule (copyable CSS)', () => {
   });
   it('is empty when nothing is set', () => {
     expect(emitDesignRule('X', {})).toBe('');
+  });
+});
+
+describe('previewDesignMessage (what the preview iframe is actually told)', () => {
+  it('sends a whole stylesheet, the only form that can carry hover/focus/active', () => {
+    const msg = previewDesignMessage({ background: '#ffffff', 'hover:background': '#000000' });
+    expect(msg.type).toBe('ce:design');
+    expect(msg.sheet).toContain('#root > * { background: #ffffff !important; }');
+    expect(msg.sheet).toContain('#root > *:hover { background: #000000 !important; }');
+  });
+
+  it('never sends the legacy `css` field, which the host wraps as resting-only', () => {
+    // A `css` payload is spliced into `#root > * { … }`, so a hover override sent
+    // that way silently repaints the resting state instead.
+    expect(Object.keys(previewDesignMessage({ 'hover:color': '#ff0000' })).sort()).toEqual([
+      'sheet',
+      'type',
+    ]);
+  });
+
+  it('sends an empty sheet when nothing is overridden, which clears the layer', () => {
+    expect(previewDesignMessage({}).sheet).toBe('');
+    expect(previewDesignMessage(undefined).sheet).toBe('');
+  });
+});
+
+describe('design state tabs', () => {
+  it('offers the resting state first, then every interactive state', () => {
+    expect(DESIGN_STATE_TABS.map((t) => t.state)).toEqual([null, ...DESIGN_STATES]);
+  });
+
+  it('names the selector each tab paints, so `focus` is not mistaken for :focus', () => {
+    const focus = DESIGN_STATE_TABS.find((t) => t.state === 'focus');
+    expect(focus?.title).toContain(':focus-visible');
+  });
+
+  it('reports which states carry an override, so none can be set unseen', () => {
+    expect(statesWithOverrides({})).toEqual(new Set());
+    expect(statesWithOverrides({ background: '#ffffff' })).toEqual(new Set([null]));
+    expect(statesWithOverrides({ 'hover:background': '#000000' })).toEqual(new Set(['hover']));
+    expect(statesWithOverrides({ radius: '8', 'active:scale': '90' })).toEqual(
+      new Set([null, 'active']),
+    );
+  });
+
+  it('ignores blank values and unknown fields, which emit no CSS at all', () => {
+    expect(statesWithOverrides({ 'hover:background': '' })).toEqual(new Set());
+    expect(statesWithOverrides({ 'hover:nonsense': '#000000' })).toEqual(new Set());
+  });
+
+  // The marker used to be derived from key PRESENCE, which the emitter does not
+  // agree with: it elides no-op values. The Hover tab's Scale slider renders at
+  // 100 while unset, so dragging it to 120 and back to 100 stores
+  // `hover:scale: '100'` for good (CustomizePane deletes a key only on ''), and
+  // the dot plus "(has overrides)" then advertised a state that paints nothing.
+  it('does not mark a state whose only override emits no CSS', () => {
+    expect(statesWithOverrides({ 'hover:scale': '100' })).toEqual(new Set());
+    expect(statesWithOverrides({ 'active:opacity': '100' })).toEqual(new Set());
+  });
+
+  it('marks a state whose value differs from the resting one, and only then', () => {
+    expect(statesWithOverrides({ scale: '120', 'hover:scale': '100' })).toEqual(
+      new Set([null, 'hover']),
+    );
+    expect(statesWithOverrides({ scale: '120', 'hover:scale': '120' })).toEqual(new Set([null]));
+  });
+
+  it('does not mark a state for a no-op in a field with no identity value', () => {
+    // The state sliders start at the resting value, so "drag it and put it back"
+    // stores exactly the resting value. For the eleven fields without an identity
+    // that used to emit a dead `:hover` rule and light the dot forever.
+    expect(statesWithOverrides({ radius: '8', 'hover:radius': '8' })).toEqual(new Set([null]));
+    expect(statesWithOverrides({ background: '#eee', 'focus:background': '#eee' })).toEqual(
+      new Set([null]),
+    );
+    expect(statesWithOverrides({ radius: '8', 'hover:radius': '12' })).toEqual(
+      new Set([null, 'hover']),
+    );
+  });
+});
+
+/**
+ * The state prefix is the entire mechanism that makes hover/focus/active
+ * authorable. It used to be one inline expression inside DesignControls, so
+ * reverting it to a bare `field.id` left the tab strip as pure decoration with
+ * every test still green. It lives here now: one seam, directly tested, and the
+ * key it produces is branded so a control cannot be handed a hand-built string.
+ */
+describe('design field bindings (the state selector is the whole feature)', () => {
+  const FIELDS: readonly DesignField[] = DESIGN_GROUPS.flatMap((g) => g.fields);
+  const field = (id: string): DesignField => {
+    const found = FIELDS.find((f) => f.id === id);
+    if (!found) throw new Error(`no such design field: ${id}`);
+    return found;
+  };
+  const keyOf = (state: DesignState | null, id: string): string => {
+    const [binding] = designFieldBindings(state, [field(id)], {});
+    if (!binding) throw new Error('designFieldBindings dropped a field');
+    return binding.key;
+  };
+
+  it('addresses the resting state with a bare field id', () => {
+    expect(keyOf(null, 'radius')).toBe('radius');
+  });
+
+  it('prefixes the key of every interactive state', () => {
+    expect(DESIGN_STATES.map((s) => keyOf(s, 'radius'))).toEqual([
+      'hover:radius',
+      'focus:radius',
+      'active:radius',
+    ]);
+  });
+
+  it('reads the value stored under its own key, never the resting one', () => {
+    const overrides = { radius: '4', 'hover:radius': '12' };
+    const valueIn = (state: DesignState | null): string =>
+      designFieldBindings(state, [field('radius')], overrides)[0]?.value ?? 'missing';
+    expect(valueIn('hover')).toBe('12');
+    expect(valueIn(null)).toBe('4');
+    expect(valueIn('active')).toBe('');
+  });
+
+  // A slider has to sit somewhere while unset. Parked at the field default it
+  // lied: with the component resting at 120%, the Hover tab showed Scale at 100
+  // and dragging it to 100 looked like a no-op the user had already made.
+  it('shows an unset state slider the resting value it inherits, not the field default', () => {
+    const inherited = (state: DesignState | null, o: Record<string, string>): string =>
+      designFieldBindings(state, [field('scale')], o)[0]?.inherited ?? 'missing';
+    expect(inherited('hover', { scale: '120' })).toBe('120');
+    expect(inherited('hover', {})).toBe('100');
+    expect(inherited(null, {})).toBe('100');
+    expect(inherited('hover', { scale: '' })).toBe('100');
+  });
+
+  it('carries the field itself, so no control can be paired with another key', () => {
+    const bindings = designFieldBindings('focus', FIELDS, {});
+    expect(bindings.map((b) => b.field.id)).toEqual(FIELDS.map((f) => f.id));
+    expect(bindings.every((b) => b.key === `focus:${b.field.id}`)).toBe(true);
+  });
+});
+
+describe('state disclosure (a control that silently does nothing is worse than none)', () => {
+  // Verified in headless Chromium: :focus-visible does not propagate to
+  // ancestors, so on the common wrapper-<div> root the Focus tab paints nothing.
+  it('warns that focus needs a focusable root', () => {
+    const caveat = designStateCaveat('focus');
+    expect(caveat).toBeTruthy();
+    expect(caveat).toMatch(/focusable/i);
+  });
+
+  it('has nothing to add for rest, hover or active', () => {
+    expect(designStateCaveat(null)).toBeNull();
+    expect(designStateCaveat('hover')).toBeNull();
+    expect(designStateCaveat('active')).toBeNull();
+  });
+});
+
+describe('colour values with alpha (the swatch must not eat it)', () => {
+  it('splits every hex form into an opaque half plus an alpha byte', () => {
+    expect(parseColorValue('#3B82F6')).toEqual({ hex6: '#3b82f6', alpha: 255 });
+    expect(parseColorValue('#00000080')).toEqual({ hex6: '#000000', alpha: 0x80 });
+    expect(parseColorValue('#abc')).toEqual({ hex6: '#aabbcc', alpha: 255 });
+    expect(parseColorValue('#abcd')).toEqual({ hex6: '#aabbcc', alpha: 0xdd });
+  });
+
+  it('understands rgb()/rgba() in comma, space and slash syntax', () => {
+    expect(parseColorValue('rgba(0, 0, 0, 0.5)')).toEqual({ hex6: '#000000', alpha: 128 });
+    expect(parseColorValue('rgb(255 0 0 / 50%)')).toEqual({ hex6: '#ff0000', alpha: 128 });
+    expect(parseColorValue('rgb(100%, 0%, 0%)')).toEqual({ hex6: '#ff0000', alpha: 255 });
+  });
+
+  it('reads `transparent` as a colour with zero alpha, not as an unknown', () => {
+    // The engine emits `transparent` verbatim (core's normalizeColor keeps the
+    // author's intent), so the swatch meets it often; treated as unparseable,
+    // the first drag would have repainted it fully opaque.
+    expect(parseColorValue('transparent')).toEqual({ hex6: '#000000', alpha: 0 });
+    expect(withPickedColor('transparent', '#ff0000')).toBe('#ff000000');
+  });
+
+  it('returns null for anything it cannot faithfully represent', () => {
+    expect(parseColorValue('')).toBeNull();
+    expect(parseColorValue('var(--brand)')).toBeNull();
+    expect(parseColorValue('#12345')).toBeNull();
+    expect(parseColorValue('oklch(70% 0.1 250)')).toBeNull();
+  });
+
+  it('formats hex6 while opaque and hex8 once alpha drops, matching the engine', () => {
+    expect(formatColorValue({ hex6: '#ff0000', alpha: 255 })).toBe('#ff0000');
+    expect(formatColorValue({ hex6: '#ff0000', alpha: 0x80 })).toBe('#ff000080');
+    expect(formatColorValue({ hex6: '#ff0000', alpha: 0 })).toBe('#ff000000');
+  });
+
+  it('feeds <input type="color"> the opaque half, never the alpha bytes', () => {
+    // The element only accepts `#rrggbb`; handed `#00000080` it silently falls
+    // back to black — which is exactly how an alpha token read as opaque.
+    expect(swatchValue('#00000080', '#888888')).toBe('#000000');
+    expect(swatchValue('rgba(255, 0, 0, 0.25)', '#888888')).toBe('#ff0000');
+    expect(swatchValue('var(--brand)', '#888888')).toBe('#888888');
+    expect(swatchValue('', '#888888')).toBe('#888888');
+  });
+
+  it('keeps the alpha the user started with when only the swatch moves', () => {
+    expect(withPickedColor('#00000080', '#ff0000')).toBe('#ff000080');
+    expect(withPickedColor('rgba(0, 0, 0, 0.5)', '#ff0000')).toBe('#ff000080');
+    expect(withPickedColor('#3b82f6', '#ff0000')).toBe('#ff0000');
+    // Nothing parseable to preserve: the pick is the whole answer.
+    expect(withPickedColor('var(--brand)', '#ff0000')).toBe('#ff0000');
+    expect(withPickedColor('', '#ff0000')).toBe('#ff0000');
+  });
+
+  it('edits alpha without disturbing the colour, and leaves unparseable values alone', () => {
+    expect(withAlphaPercent('#ff0000', 50)).toBe('#ff000080');
+    expect(withAlphaPercent('#ff000080', 100)).toBe('#ff0000');
+    expect(withAlphaPercent('#ff000080', 0)).toBe('#ff000000');
+    expect(withAlphaPercent('var(--brand)', 50)).toBe('var(--brand)');
+  });
+
+  it('reports alpha as a whole percentage for display', () => {
+    expect(alphaPercent(255)).toBe(100);
+    expect(alphaPercent(128)).toBe(50);
+    expect(alphaPercent(0)).toBe(0);
   });
 });

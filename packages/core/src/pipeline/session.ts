@@ -19,6 +19,7 @@ import { AdapterRegistry } from '../adapters/registry.js';
 import { createDefaultRegistry } from '../adapters/default-registry.js';
 import { loadProject } from '../project/load-project.js';
 import { classify } from '../classify/classifier.js';
+import { detectDegenerateHeuristics } from '../classify/heuristic-health.js';
 import { resolvePortability } from '../portability/portability-resolver.js';
 import { tokenizeBundle, TOKENS_CSS_PATH } from '../tokenize/tokenization-transform.js';
 import { generateSampleProps } from '../sandbox/sample-props.js';
@@ -113,6 +114,14 @@ export class EngineSession {
       await yieldToEventLoop();
     }
 
+    // Graded only once the whole scan is in: a detector's hit-rate is a
+    // property of the corpus, not of any one component. It is returned as its
+    // own typed field rather than flattened into `warnings`: appended there it
+    // sorted LAST, so every consumer that caps that list cut the scan-level
+    // finding first — on exactly the large targets whose scale makes it
+    // diagnostic. See `ScanResult.warnings`.
+    const heuristicWarnings = detectDegenerateHeuristics(components, this.loaded.pkg);
+
     return {
       artifactVersion: ARTIFACT_VERSION,
       projectRoot: this.loaded.rootPath,
@@ -120,6 +129,7 @@ export class EngineSession {
       components,
       failures,
       warnings,
+      heuristicWarnings,
     };
   }
 
@@ -182,6 +192,12 @@ export class EngineSession {
       propModel: summary.propModel,
       sampleProps,
       providerDeps: providers.dependencies,
+      // The whole result, not just its deps: the scaffolder needs `unresolved`
+      // and "was a wrapper produced at all" to tell a faithful render from a
+      // bare one. Passing deps alone left `input.providers` undefined in
+      // production, so every context component was reported with the same
+      // placeholder wording no matter what the stubber actually managed.
+      providers,
     });
 
     return {
