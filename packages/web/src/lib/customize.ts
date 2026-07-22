@@ -22,6 +22,45 @@ export const EMPTY_CUSTOMIZATION: CustomizationState = {
   designOverrides: {},
 };
 
+/**
+ * Every component's customization, keyed by component id. The state lives above
+ * the pane that edits it: the pane unmounts on every tab switch and every card
+ * selection, and holding minutes of theming work inside it meant one stray
+ * click erased the lot.
+ */
+export type CustomizationMap = ReadonlyMap<string, CustomizationState>;
+
+export function getCustomization(map: CustomizationMap, id: string | null): CustomizationState {
+  return (id === null ? undefined : map.get(id)) ?? EMPTY_CUSTOMIZATION;
+}
+
+export function setCustomization(
+  map: CustomizationMap,
+  id: string,
+  state: CustomizationState,
+): CustomizationMap {
+  return new Map(map).set(id, state);
+}
+
+/** Has anything actually been edited? Drives the Reset button's enabled state. */
+export function isCustomized(state: CustomizationState): boolean {
+  return (
+    Object.keys(state.tokenOverrides).length > 0 ||
+    Object.keys(state.propValues).length > 0 ||
+    Object.keys(state.designOverrides ?? {}).length > 0
+  );
+}
+
+/**
+ * Most-used tokens first. A token used in twelve declarations is the one worth
+ * re-theming; one used once is noise near the bottom of a long list.
+ */
+export function sortTokensByUsage(tokens: readonly Token[]): Token[] {
+  return tokens
+    .slice()
+    .sort((a, b) => b.usages.length - a.usages.length || a.name.localeCompare(b.name));
+}
+
 /** Regenerate the `:root { … }` block with overrides applied. */
 export function emitRootCss(tokens: readonly Token[], overrides: Record<string, string>): string {
   if (tokens.length === 0) return ':root {\n}\n';

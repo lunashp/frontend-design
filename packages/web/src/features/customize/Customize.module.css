@@ -76,11 +76,65 @@
   margin-bottom: var(--space-1);
 }
 
+.token {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .row {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* Where the token actually came from — the difference between dragging a
+   slider blindfolded and knowing you are editing .primary's background. */
+.usages {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+.usage {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.usageProp {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+.usageSelector {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+.usageFile {
+  margin-left: auto;
+  flex-shrink: 0;
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.usageMore {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  opacity: 0.75;
 }
 
 .swatch {

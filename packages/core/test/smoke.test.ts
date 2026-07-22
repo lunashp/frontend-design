@@ -10,7 +10,7 @@ import {
 
 describe('@ce/core public surface', () => {
   it('exposes the versioned artifact contract and core exports', () => {
-    expect(ARTIFACT_VERSION).toBe(1);
+    expect(ARTIFACT_VERSION).toBe(2);
     expect(typeof ENGINE_VERSION).toBe('string');
     expect(new AdapterRegistry().list()).toHaveLength(0);
     expect(typeof createReadOnlyFs).toBe('function');

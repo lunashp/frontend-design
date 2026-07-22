@@ -58,22 +58,48 @@ function toControl(prop: PropItem): PropControl {
   };
 }
 
+/**
+ * Prop extraction was attempted and did not produce an answer. Thrown rather
+ * than returning an empty PropModel: `{ props: [] }` is indistinguishable from
+ * a component that genuinely takes no props, so the Details tab would state
+ * "no props" as fact. `EngineSession.scan()` catches this and records a
+ * ScanFailure, which names the file instead of quietly lying about it.
+ */
+export class PropExtractionError extends Error {
+  constructor(descriptor: ComponentDescriptor, reason: string) {
+    super(`Props for "${descriptor.name}" could not be extracted: ${reason}`);
+    this.name = 'PropExtractionError';
+  }
+}
+
 export function extractProps(
   descriptor: ComponentDescriptor,
   handle: ReactProgramHandle,
 ): PropModel {
   let docs: ComponentDoc[];
   try {
-    docs = handle.docgen().parse(descriptor.filePath);
-  } catch {
-    return EMPTY;
+    // `parse()` would build a fresh ts.Program per component. Reuse the
+    // session's one program instead — that rebuild is ~all of a scan's cost.
+    docs = handle
+      .docgen()
+      .parseWithProgramProvider(descriptor.filePath, () => handle.tsProgram());
+  } catch (err) {
+    throw new PropExtractionError(descriptor, (err as Error).message);
   }
+  // No docs at all is a normal outcome for shapes docgen does not model at all
+  // (styled-components, some HOC-wrapped exports) — not a failed extraction.
   if (docs.length === 0) return EMPTY;
 
   const doc =
     docs.find((d) => d.displayName === descriptor.name) ??
     (docs.length === 1 ? docs[0] : undefined);
-  if (!doc) return EMPTY;
+  if (!doc) {
+    throw new PropExtractionError(
+      descriptor,
+      `${docs.length} components are documented in ${descriptor.filePath} ` +
+        `(${docs.map((d) => d.displayName).join(', ')}) and none is named "${descriptor.name}"`,
+    );
+  }
 
   const props = Object.values(doc.props)
     .map(toControl)

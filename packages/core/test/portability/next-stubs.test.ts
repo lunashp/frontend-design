@@ -63,6 +63,41 @@ describe('next stubs', () => {
     expect(entry).not.toMatch(/from 'next\//);
   });
 
+  it('discloses every substitution and what it costs, instead of swapping silently', async () => {
+    const root = await project(
+      `import Link from 'next/link';\n` +
+        `import { useRouter } from 'next/navigation';\n` +
+        `export const Thing = () => { const r = useRouter(); return <Link href="/x" onClick={() => r.push('/y')}>go</Link>; };\n`,
+    );
+    const a = await bundleOf(root);
+
+    const stubbed = [...a.bundle.stubbedModules];
+    expect(stubbed.map((s) => s.specifier)).toEqual(['next/link', 'next/navigation']);
+    expect(stubbed.map((s) => s.replacedWith)).toEqual([
+      '/src/__next-stubs__/next-link.tsx',
+      '/src/__next-stubs__/next-navigation.tsx',
+    ]);
+    // Every stub file it names must actually be in the bundle.
+    for (const s of stubbed) expect(a.bundle.files[s.replacedWith]).toBeDefined();
+
+    // The loss has to be concrete: a prefetch-less <a> and a dead router.
+    expect(stubbed[0]?.lost).toMatch(/plain <a>/);
+    expect(stubbed[1]?.lost).toMatch(/no-ops/);
+
+    // And it has to reach the user, not just sit in the artifact.
+    const notes = a.sandpack.notes.join(' ');
+    expect(notes).toMatch(/next\/link → local stub/);
+    expect(notes).toMatch(/next\/navigation → local stub/);
+  });
+
+  it('reports no substitutions for a component that needed none', async () => {
+    const root = await project(`export const Thing = () => <div>plain</div>;\n`, {
+      react: '^19.0.0',
+    });
+    const a = await bundleOf(root);
+    expect(a.bundle.stubbedModules).toEqual([]);
+  });
+
   it('stays code-only for server-only Next.js modules rather than faking them', async () => {
     const root = await project(
       `import { headers } from 'next/headers';\n` +

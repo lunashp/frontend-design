@@ -55,15 +55,30 @@ export {
   injectTokenOverrides,
   type CustomizedComponent,
 } from './customize/customize-artifact.js';
+// The design-override surface is state-aware (`hover:background`, …). Consumers
+// import bare '@ce/core' and cannot deep-import, so the state-aware half
+// (blocks, key parsing, the state tables) is exported alongside the flat
+// resting-state emitters — otherwise every consumer re-derives it, badly.
 export {
   emitDesignDeclarations,
+  emitDesignBlocks,
   emitDesignCss,
+  emitDesignStyleSheet,
   emitDesignRule,
+  splitDesignOverrides,
+  parseDesignKey,
+  designStateKey,
+  isDesignKey,
   DESIGN_GROUPS,
+  DESIGN_FIELDS,
+  DESIGN_STATES,
+  DESIGN_STATE_SELECTORS,
   type DesignControlKind,
   type DesignOption,
   type DesignField,
   type DesignGroup,
+  type DesignState,
+  type DesignBlock,
 } from './customize/design-overrides.js';
 
 export {

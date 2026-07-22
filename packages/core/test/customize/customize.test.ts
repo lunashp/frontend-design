@@ -5,7 +5,18 @@ import {
   customizeSpec,
   customizeArtifact,
 } from '../../src/customize/customize-artifact.js';
-import { emitDesignCss, emitDesignRule } from '../../src/customize/design-overrides.js';
+import {
+  DESIGN_FIELDS,
+  DESIGN_GROUPS,
+  designStateKey,
+  emitDesignBlocks,
+  emitDesignCss,
+  emitDesignRule,
+  emitDesignStyleSheet,
+  isDesignKey,
+  parseDesignKey,
+  splitDesignOverrides,
+} from '../../src/customize/design-overrides.js';
 import type { ComponentArtifact } from '../../src/types/artifact.js';
 import type { Token } from '../../src/types/token-model.js';
 
@@ -43,11 +54,56 @@ describe('patchEntryProps', () => {
   const entry = 'const props = {\n  "variant": "primary",\n  "size": "sm"\n};\n';
   it('merges prop values into the props literal', () => {
     const out = patchEntryProps(entry, { variant: 'secondary' });
-    expect(out).toContain('"variant": "secondary"');
-    expect(out).toContain('"size": "sm"');
+    expect(out.entry).toContain('"variant": "secondary"');
+    expect(out.entry).toContain('"size": "sm"');
+    expect(out.warnings).toEqual([]);
   });
   it('is a no-op with no prop values', () => {
-    expect(patchEntryProps(entry, {})).toBe(entry);
+    expect(patchEntryProps(entry, {})).toEqual({ entry, warnings: [] });
+  });
+
+  // Regression (C2): build-entry emits `"onSelect": __fnStub` for required
+  // function props. That is not JSON, so a plain JSON.parse threw and every
+  // other sample prop was dropped from the preview the moment a prop was edited.
+  it('keeps every sample prop when the literal holds a function stub', () => {
+    const withStub =
+      'const props = {\n  "label": "Save",\n  "children": "Save",\n  "onSelect": __fnStub\n};\n';
+    const out = patchEntryProps(withStub, { label: 'Cancel' });
+    expect(out.warnings).toEqual([]);
+    expect(out.entry).toContain('"label": "Cancel"');
+    expect(out.entry).toContain('"children": "Save"');
+    expect(out.entry).toContain('"onSelect": __fnStub');
+    expect(out.entry).not.toContain('"__fnStub"');
+  });
+
+  // The old lazy `\{[\s\S]*?\};` regex ended the literal at the first `};` it
+  // saw — including one inside a string value — and truncated everything after.
+  it('keeps nested props whose values contain a brace-semicolon', () => {
+    const nested =
+      'const props = {\n  "user": {"name": "Ada", "tags": ["x"]},\n  "code": "if (x) {};",\n  "count": 2\n};\nconst root = createRoot(el);\n';
+    const out = patchEntryProps(nested, { count: 5 });
+    expect(out.entry).toContain('"name": "Ada"');
+    expect(out.entry).toContain('"if (x) {};"');
+    expect(out.entry).toContain('"count": 5');
+    expect(out.entry).toContain('const root = createRoot(el);');
+    expect(out.warnings).toEqual([]);
+  });
+
+  it('falls back to a runtime spread — and reports it — when the literal is unparseable', () => {
+    const weird = 'const props = {\n  "when": new Date()\n};\n';
+    const out = patchEntryProps(weird, { label: 'x' });
+    expect(out.entry).toContain('...(');
+    expect(out.entry).toContain('new Date()');
+    expect(out.entry).toContain('"label":"x"');
+    expect(out.warnings).toHaveLength(1);
+    expect(out.warnings[0]).toMatch(/could not parse/i);
+  });
+
+  it('reports, rather than silently skipping, an entry with no props literal', () => {
+    const out = patchEntryProps('const other = {};\n', { label: 'x' });
+    expect(out.entry).toBe('const other = {};\n');
+    expect(out.warnings).toHaveLength(1);
+    expect(out.warnings[0]).toMatch(/no balanced/i);
   });
 });
 
@@ -122,6 +178,67 @@ describe('emitDesignCss (universal design overrides)', () => {
   });
 });
 
+describe('interactive states (hover / focus / active)', () => {
+  it('splits a flat map into resting and per-state buckets', () => {
+    const { base, states } = splitDesignOverrides({
+      color: '#111',
+      'hover:color': '#222',
+      'active:scale': '98',
+    });
+    expect(base).toEqual({ color: '#111' });
+    expect(states.hover).toEqual({ color: '#222' });
+    expect(states.active).toEqual({ scale: '98' });
+    expect(states.focus).toBeUndefined();
+  });
+
+  it('treats an unknown prefix as part of a (bare, unknown) field id', () => {
+    expect(parseDesignKey('nope:color')).toEqual({ state: null, field: 'nope:color' });
+    expect(parseDesignKey('hover:color')).toEqual({ state: 'hover', field: 'color' });
+    expect(designStateKey('focus', 'borderColor')).toBe('focus:borderColor');
+    expect(designStateKey(null, 'color')).toBe('color');
+  });
+
+  it('accepts state-prefixed keys as real design fields', () => {
+    expect(isDesignKey('background')).toBe(true);
+    expect(isDesignKey('hover:background')).toBe(true);
+    expect(isDesignKey('borderRadius')).toBe(false);
+    expect(isDesignKey('hover:borderRadius')).toBe(false);
+  });
+
+  it('emits one preview rule per state, with :focus-visible for focus', () => {
+    const sheet = emitDesignStyleSheet({
+      background: '#fff',
+      'hover:background': '#eee',
+      'focus:borderColor': '#00f',
+      'active:scale': '98',
+    });
+    expect(sheet).toContain('#root > * { background: #fff !important; }');
+    expect(sheet).toContain('#root > *:hover { background: #eee !important; }');
+    expect(sheet).toContain('#root > *:focus-visible {');
+    expect(sheet).toContain('border-color: #00f !important');
+    expect(sheet).toContain('#root > *:active { transform: scale(0.98) !important');
+  });
+
+  it('emits nothing when no override is set, and honours a custom selector', () => {
+    expect(emitDesignStyleSheet({})).toBe('');
+    expect(emitDesignStyleSheet({ color: '#111' }, '.Card')).toBe('.Card { color: #111 !important; }');
+  });
+
+  it('keeps a plain unprefixed map working exactly as before', () => {
+    expect(emitDesignCss({ color: '#111' })).toBe('color: #111 !important;');
+    expect(emitDesignBlocks({ color: '#111' })).toEqual([
+      { state: null, selectorSuffix: '', declarations: ['color: #111 !important'] },
+    ]);
+  });
+
+  it('exposes every DESIGN_GROUPS field id, and only those', () => {
+    expect(DESIGN_FIELDS).toEqual(DESIGN_GROUPS.flatMap((g) => g.fields.map((f) => f.id)));
+    expect(DESIGN_FIELDS).toHaveLength(13);
+    expect(DESIGN_FIELDS).toContain('borderWidth');
+    expect(DESIGN_FIELDS).not.toContain('borderRadius');
+  });
+});
+
 describe('emitDesignRule (copyable CSS)', () => {
   it('emits a named rule without !important', () => {
     const rule = emitDesignRule('MyButton', { color: '#111', radius: '8' });
@@ -129,6 +246,17 @@ describe('emitDesignRule (copyable CSS)', () => {
     expect(rule).toContain('color: #111;');
     expect(rule).toContain('border-radius: 8px;');
     expect(rule).not.toContain('!important');
+  });
+  it('emits a copyable rule per interactive state', () => {
+    const rule = emitDesignRule('MyButton', { color: '#111', 'hover:color': '#222' });
+    expect(rule).toContain('.MyButton {\n  color: #111;\n}');
+    expect(rule).toContain('.MyButton:hover {\n  color: #222;\n}');
+    expect(rule).not.toContain('!important');
+  });
+  it('emits only the state rule when nothing rests', () => {
+    const rule = emitDesignRule('MyButton', { 'focus:borderColor': '#00f' });
+    expect(rule).toContain('.MyButton:focus-visible {');
+    expect(rule).not.toContain('.MyButton {');
   });
   it('falls back to .component for a non-identifier name', () => {
     expect(emitDesignRule('123 Bad', { color: '#111' })).toContain('.component {');
@@ -194,5 +322,29 @@ describe('customizeArtifact', () => {
     const out = customizeArtifact(artifact, { tokenOverrides: {}, propValues: {} });
     expect(out.designCss).toBe('');
     expect(out.appliedDesignOverrides).toEqual({});
+    expect(out.unknownDesignFields).toEqual([]);
+    expect(out.warnings).toEqual([]);
+  });
+
+  // Regression (Q3): unknown design keys used to be echoed back as "applied"
+  // while emitting nothing, so `borderRadius: '8'` looked like it had worked.
+  it('reports design keys that name no known field instead of echoing them back', () => {
+    const out = customizeArtifact(artifact, {
+      tokenOverrides: {},
+      propValues: {},
+      designOverrides: { radius: '12', borderRadius: '8', 'hover:color': '#222', 'hover:nope': 'x' },
+    });
+    expect(out.appliedDesignOverrides).toEqual({ radius: '12', 'hover:color': '#222' });
+    expect(out.unknownDesignFields).toEqual(['borderRadius', 'hover:nope']);
+    expect(out.designCss).toContain('border-radius: 12px;');
+    expect(out.designCss).toContain('.MyButton:hover {');
+    expect(out.designCss).not.toContain('8px');
+  });
+
+  it('surfaces entry-patch warnings instead of dropping them', () => {
+    const broken = artifactWith({ '/index.tsx': 'const other = {};\n' }, 'MyButton');
+    const out = customizeArtifact(broken, { tokenOverrides: {}, propValues: { a: 1 } });
+    expect(out.warnings).toHaveLength(1);
+    expect(out.warnings[0]).toMatch(/props/i);
   });
 });

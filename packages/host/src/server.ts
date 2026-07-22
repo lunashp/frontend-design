@@ -4,18 +4,46 @@
  * thin: it maps requests to engine calls and serializes the results.
  */
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import http from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { createLogger, type ProgressEvent } from '@ce/core';
-import { sendJson, sendError, sendHtml, handlePreflight, readJsonBody } from './http-util.js';
+import {
+  applyCors,
+  sendJson,
+  sendError,
+  sendHtml,
+  handlePreflight,
+  readJsonBody,
+  serveStatic,
+} from './http-util.js';
 import { SessionStore } from './session-store.js';
 import { renderPreviewHtml } from './bundle-preview.js';
+
+/**
+ * Loopback only. This process reads arbitrary local source, so binding every
+ * interface (Node's default when `host` is omitted) publishes the user's disk
+ * to their whole network. Overriding it is a deliberate act — see main.ts.
+ */
+export const DEFAULT_HOST = '127.0.0.1';
+
+/** Ports tried before giving up, starting at the requested one. */
+export const DEFAULT_PORT_ATTEMPTS = 10;
+
+/** The built gallery, relative to this file: packages/host/src → packages/web/dist. */
+const DEFAULT_WEB_ROOT = path.resolve(import.meta.dirname, '../../web/dist');
 
 export interface HostOptions {
   readonly port: number;
   readonly defaultProject?: string;
   readonly workspaceRoot?: string;
+  /** Interface to bind. Defaults to loopback; widen only on purpose. */
+  readonly host?: string;
+  /** Consecutive ports to try when the requested one is taken. */
+  readonly portAttempts?: number;
+  /** Directory holding the built web gallery. Defaults to packages/web/dist. */
+  readonly webRoot?: string;
 }
 
 export interface Host {
@@ -28,9 +56,61 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'));
 }
 
+async function isDirectory(candidate: string): Promise<boolean> {
+  try {
+    return (await fs.stat(candidate)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Bind, stepping the port forward while it is taken.
+ *
+ * Node reports bind failures as an 'error' event, never as a throw — so without
+ * a handler here the returned promise never settles and the process hangs
+ * forever on an occupied port.
+ */
+function listenWithFallback(
+  server: http.Server,
+  port: number,
+  host: string,
+  attempts: number,
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    let remaining = Math.max(1, attempts);
+    let current = port;
+
+    const cleanup = (): void => {
+      server.off('error', onError);
+      server.off('listening', onListening);
+    };
+    const onError = (err: NodeJS.ErrnoException): void => {
+      if (err.code === 'EADDRINUSE' && remaining > 1) {
+        remaining -= 1;
+        current += 1;
+        server.listen(current, host);
+        return;
+      }
+      cleanup();
+      reject(err);
+    };
+    const onListening = (): void => {
+      cleanup();
+      const address = server.address();
+      resolve(typeof address === 'object' && address !== null ? address.port : current);
+    };
+
+    server.on('error', onError);
+    server.on('listening', onListening);
+    server.listen(current, host);
+  });
+}
+
 export function createHost(options: HostOptions): Host {
   const store = new SessionStore(options.workspaceRoot);
   const clients = new Set<WebSocket>();
+  const webRoot = options.webRoot ?? DEFAULT_WEB_ROOT;
 
   const broadcast = (event: ProgressEvent): void => {
     const msg = JSON.stringify({ type: 'progress', ...event });
@@ -62,6 +142,7 @@ export function createHost(options: HostOptions): Host {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const route = `${req.method} ${url.pathname}`;
 
+    applyCors(req, res);
     if (req.method === 'OPTIONS') return handlePreflight(res);
 
     if (route === 'GET /api/health') {
@@ -157,10 +238,36 @@ export function createHost(options: HostOptions): Host {
       }
     }
 
+    // Everything that is not an API call is the built gallery, so starting the
+    // host is the single command that runs the product — no second dev server.
+    if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+      if (await serveStatic(webRoot, url.pathname, res)) return;
+      if (!(await isDirectory(webRoot))) {
+        return sendHtml(
+          res,
+          503,
+          `<!doctype html><meta charset="utf-8"><title>Gallery not built</title>` +
+            `<body style="font:14px/1.6 ui-sans-serif,system-ui;padding:32px;max-width:52rem">` +
+            `<h1 style="font-size:1.25rem">The gallery has not been built</h1>` +
+            `<p>The API is up, but there is no built web app to serve at ` +
+            `<code>${escapeHtml(webRoot)}</code>.</p>` +
+            `<p>Build it once with <code>pnpm --filter @ce/web build</code>, or run the Vite dev ` +
+            `server with <code>pnpm dev</code> and open it instead — it proxies /api here.</p></body>`,
+        );
+      }
+    }
+
     sendError(res, 404, `No route: ${route}`, 'NOT_FOUND');
   }
 
   const wss = new WebSocketServer({ server, path: '/ws' });
+  // ws mirrors every http.Server 'error' onto the WebSocketServer, and an
+  // unhandled 'error' on an EventEmitter throws — so without this, the port
+  // fallback below would crash the process on the very EADDRINUSE it handles.
+  wss.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') return; // owned by listen(), already handled
+    console.error(`[ce:host] websocket error: ${err.message}`);
+  });
   wss.on('connection', (ws) => {
     clients.add(ws);
     ws.on('close', () => clients.delete(ws));
@@ -170,9 +277,12 @@ export function createHost(options: HostOptions): Host {
   return {
     server,
     listen() {
-      return new Promise<number>((resolve) => {
-        server.listen(options.port, () => resolve(options.port));
-      });
+      return listenWithFallback(
+        server,
+        options.port,
+        options.host ?? DEFAULT_HOST,
+        options.portAttempts ?? DEFAULT_PORT_ATTEMPTS,
+      );
     },
     close() {
       return new Promise<void>((resolve) => {

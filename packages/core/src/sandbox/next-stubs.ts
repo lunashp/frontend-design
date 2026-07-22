@@ -206,6 +206,66 @@ const PACKAGE_STUBS: Readonly<Record<string, string>> = {
   '@sentry/core': SENTRY,
 };
 
+const SENTRY_LOST =
+  'Error and performance telemetry: every capture/span/flush call is a no-op, and ' +
+  'ErrorBoundary/withErrorBoundary pass children straight through, so runtime errors ' +
+  'are neither reported nor caught.';
+
+const ROUTER_LOST =
+  'Routing: push/replace/back/forward/refresh are no-ops, usePathname always returns "/" ' +
+  'and useSearchParams is always empty, so route-dependent UI shows its default state.';
+
+const FONT_LOST =
+  'Font loading: className and variable are empty strings and the family falls back to ' +
+  '`inherit`, so text renders in the sandbox default face.';
+
+/**
+ * Specifier → the capability its stub gives up, phrased for the person pasting
+ * the code. A substitution is never free, and swapping silently ships the loss
+ * as if it were the original, so every stub has to say what it costs. Keep one
+ * entry per key of STUBS/PACKAGE_STUBS — `stub-disclosure.test.ts` enforces it.
+ */
+const LOST: Readonly<Record<string, string>> = {
+  next: 'The Next.js runtime object: the root import resolves to `{}`, so anything read off it is undefined.',
+  'next/link':
+    'Client-side navigation: renders a plain <a>, so every click is a full page load and the ' +
+    'prefetch/replace/scroll/shallow/locale props are dropped.',
+  'next/image':
+    'Image optimisation: renders a plain <img>, so there is no responsive srcset, lazy loading, ' +
+    'format conversion or blur placeholder.',
+  'next/navigation': ROUTER_LOST,
+  'next/router': ROUTER_LOST,
+  'next/dynamic':
+    'Code-splitting control: the ssr/suspense options are ignored and the loader runs through ' +
+    'React.lazy, so a target the graph did not bundle fails inside Suspense instead of loading.',
+  'next/head': 'Document <head> control: renders nothing, so titles, meta tags and preloads are dropped.',
+  'next/script': 'Third-party script injection: renders nothing, and no injected script executes.',
+  'next/font/google': FONT_LOST,
+  'next/font/local': FONT_LOST,
+  '@sentry/nextjs': SENTRY_LOST,
+  '@sentry/react': SENTRY_LOST,
+  '@sentry/browser': SENTRY_LOST,
+  '@sentry/core': SENTRY_LOST,
+};
+
+/** Every specifier `isStubbableModule` accepts. Exported so the disclosure can be proven exhaustive. */
+export const STUBBABLE_SPECIFIERS: readonly string[] = Object.freeze([
+  ...Object.keys(STUBS),
+  ...Object.keys(PACKAGE_STUBS),
+]);
+
+/**
+ * What the destination project no longer gets because this specifier was
+ * stubbed. The fallback is deliberately vague — it means the LOST table is
+ * missing an entry, which the disclosure test exists to prevent.
+ */
+export function stubbedCapabilityLost(specifier: string): string {
+  return (
+    LOST[specifier] ??
+    'The module was replaced by a local no-op stub, so none of its runtime behaviour is reproduced.'
+  );
+}
+
 /**
  * Any import specifier the sandbox can't run but we can fake: a `next/*` module
  * or a whole unbundlable package. Callers rewrite these to a local stub and drop

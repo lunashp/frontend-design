@@ -11,36 +11,105 @@ const EXPECTED_TOOLS = [
   'scan_project',
 ];
 
+/** Connect a client to a fresh in-memory server; the caller closes both. */
+async function connect(cache = new SessionCache()) {
+  const server = createMcpServer({ cache });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: 'test-client', version: '0.0.0' });
+  await client.connect(clientTransport);
+  return {
+    client,
+    server,
+    close: async () => {
+      await client.close();
+      await server.close();
+    },
+  };
+}
+
 describe('createMcpServer', () => {
   it('registers exactly the four P5 tools', async () => {
-    const server = createMcpServer({ cache: new SessionCache() });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-
-    const client = new Client({ name: 'test-client', version: '0.0.0' });
-    await client.connect(clientTransport);
+    const { client, close } = await connect();
 
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(EXPECTED_TOOLS);
 
-    await client.close();
-    await server.close();
+    await close();
+  });
+
+  it('publishes instructions covering the invariant, call order and budget levers', async () => {
+    const { client, close } = await connect();
+
+    const instructions = client.getInstructions() ?? '';
+    expect(instructions).toContain('READ-ONLY');
+    expect(instructions).toContain('scan_project');
+    // Renderability values an agent has to interpret.
+    expect(instructions).toContain('code-only');
+    expect(instructions).toContain('stubbed');
+    // Budget levers.
+    expect(instructions).toContain('nextOffset');
+    expect(instructions).toContain('pathIncludes');
+
+    await close();
+  });
+
+  it('advertises the paging and search arguments on list_components', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const list = tools.find((t) => t.name === 'list_components');
+    const keys = Object.keys((list?.inputSchema.properties ?? {}) as Record<string, unknown>);
+    expect(keys).toEqual(expect.arrayContaining(['pathIncludes', 'propIncludes', 'offset', 'limit']));
+
+    await close();
+  });
+
+  it('enumerates every legal design-override field in the customize description', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const customize = tools.find((t) => t.name === 'customize_component');
+    const described = String(
+      (customize?.inputSchema.properties as Record<string, { description?: string }> | undefined)
+        ?.designOverrides?.description ?? '',
+    );
+    // The docs used to name 6 of the 13 fields; the omitted ones must be listed.
+    for (const field of ['scale', 'width', 'fontWeight', 'fontFamily', 'borderWidth', 'borderColor', 'opacity']) {
+      expect(described).toContain(field);
+    }
+
+    await close();
+  });
+
+  it('documents the interactive-state prefixes on the customize description', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const customize = tools.find((t) => t.name === 'customize_component');
+    const described = String(
+      (customize?.inputSchema.properties as Record<string, { description?: string }> | undefined)
+        ?.designOverrides?.description ?? '',
+    );
+    // A capability nobody is told about is unreachable: the engine has accepted
+    // `hover:` / `focus:` / `active:` prefixes all along.
+    expect(described).toContain('hover:background');
+    for (const state of ['hover', 'focus', 'active']) {
+      expect(described).toContain(state);
+    }
+
+    await close();
   });
 
   it('returns a tool error (not a throw) when no project path is available', async () => {
-    const server = createMcpServer({ cache: new SessionCache() });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    const client = new Client({ name: 'test-client', version: '0.0.0' });
-    await client.connect(clientTransport);
+    const { client, close } = await connect();
 
     const result = await client.callTool({ name: 'scan_project', arguments: {} });
     expect(result.isError).toBe(true);
     const content = result.content as { type: string; text: string }[];
     expect(content[0]?.text).toContain('[MISSING_PATH]');
 
-    await client.close();
-    await server.close();
+    await close();
   });
 });

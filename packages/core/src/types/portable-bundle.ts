@@ -16,6 +16,20 @@ export interface AssetRef {
   readonly sourcePath: string;
 }
 
+/**
+ * A module the resolver swapped for a local stub so the component could render
+ * without a dependency the sandbox cannot install (`next/*`, `@sentry/*`, …).
+ * The substitution is never free, so it is disclosed rather than silent.
+ */
+export interface StubbedModule {
+  /** The original import specifier, e.g. `next/link`. */
+  readonly specifier: string;
+  /** Bundle-relative path of the stub now serving it. */
+  readonly replacedWith: string;
+  /** The capability given up, e.g. "client-side prefetch and route awareness". */
+  readonly lost: string;
+}
+
 export interface PortableBundle {
   readonly files: FileMap;
   /** Entry file within `files`, e.g. `/Button.tsx`. */
@@ -25,6 +39,13 @@ export interface PortableBundle {
   readonly assets: readonly AssetRef[];
   /** Human-readable cutoffs/decisions, e.g. "left <DataTable> as external boundary". */
   readonly warnings: readonly string[];
+  /** Modules replaced by local stubs, and what each replacement costs. */
+  readonly stubbedModules: readonly StubbedModule[];
+  /**
+   * Every unresolved local import, as `<file> → <specifier>`. `warnings` carries
+   * a truncated prose version of the same facts; this is the complete list.
+   */
+  readonly danglingImports: readonly string[];
   /** True when the bundle has unresolved local imports (dropped/truncated files). */
   readonly incomplete?: boolean;
   /**

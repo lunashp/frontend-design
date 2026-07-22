@@ -15,6 +15,13 @@ export interface ReactProgramHandle {
   readonly isNext: boolean;
   /** Lazily-created, cached react-docgen-typescript parser. */
   docgen(): rdt.FileParser;
+  /**
+   * The ts-morph project's underlying `ts.Program`. Handed to docgen's
+   * `parseWithProgramProvider` so prop extraction reuses this one program
+   * instead of building a fresh one per component — `parse()` calls
+   * `ts.createProgram` every time, which was ~99% of a scan's wall clock.
+   */
+  tsProgram(): ts.Program;
 }
 
 const DOCGEN_OPTIONS: rdt.ParserOptions = {
@@ -62,14 +69,24 @@ export function createReactProgram(loaded: LoadedProject): ReactProgramHandle {
     tsProject,
     loaded,
     isNext,
+    tsProgram() {
+      // ts-morph memoizes the created ts.Program and only rebuilds it when a
+      // source file changes; the target is read-only, so this costs one
+      // `ts.createProgram` per session. The two `ts` copies (ours vs the one
+      // ts-morph bundles) are structurally identical but nominally distinct.
+      return tsProject.getProgram().compilerObject as unknown as ts.Program;
+    },
     docgen() {
       if (parser) return parser;
-      parser = loaded.tsconfigPath
-        ? rdt.withCustomConfig(loaded.tsconfigPath, DOCGEN_OPTIONS)
-        : rdt.withCompilerOptions(
-            { jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
-            DOCGEN_OPTIONS,
-          );
+      // The compiler options are vestigial: every call goes through
+      // `parseWithProgramProvider`, which ignores them and uses `tsProgram()`.
+      // They are taken from the ts-morph project (which already resolved the
+      // target's tsconfig) so the fallback matches the program we hand over,
+      // and so a malformed tsconfig can no longer throw here a second time.
+      parser = rdt.withCompilerOptions(
+        tsProject.getCompilerOptions() as unknown as ts.CompilerOptions,
+        DOCGEN_OPTIONS,
+      );
       return parser;
     },
   };

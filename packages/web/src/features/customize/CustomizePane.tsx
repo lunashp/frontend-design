@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ComponentArtifact } from '../../api/types.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
-import { emitRootCss, EMPTY_CUSTOMIZATION, type CustomizationState } from '../../lib/customize.js';
+import {
+  emitRootCss,
+  isCustomized,
+  EMPTY_CUSTOMIZATION,
+  type CustomizationState,
+} from '../../lib/customize.js';
 import { emitDesignCss, emitDesignRule } from '../../lib/design-overrides.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
@@ -12,19 +17,28 @@ import styles from './Customize.module.css';
 export function CustomizePane({
   artifact,
   projectRoot,
+  state,
+  onChange,
 }: {
   artifact: ComponentArtifact;
   projectRoot: string;
+  /** Owned by the app and keyed by component id, so it survives this pane
+   *  unmounting on a tab switch or a different card being selected. */
+  state: CustomizationState;
+  onChange: (state: CustomizationState) => void;
 }) {
-  const [state, setState] = useState<CustomizationState>(EMPTY_CUSTOMIZATION);
   // Prop edits rebundle the preview, so debounce them; token & design edits
   // re-theme live (postMessage), so they apply from `state` immediately.
-  const [debouncedProps, setDebouncedProps] = useState<Record<string, unknown>>({});
+  // Seeded from the incoming state so a reopened pane renders the saved props
+  // immediately instead of flashing the unedited component for one debounce.
+  const [debouncedProps, setDebouncedProps] = useState<Record<string, unknown>>(
+    () => state.propValues,
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedProps(state.propValues), 400);
     return () => clearTimeout(t);
-  }, [state]);
+  }, [state.propValues]);
 
   const tokens = artifact.tokenModel.tokens;
   const design = state.designOverrides ?? {};
@@ -41,23 +55,19 @@ export function CustomizePane({
 
   const designCss = useMemo(() => emitDesignCss(design), [design]);
 
-  const dirty =
-    Object.keys(state.tokenOverrides).length > 0 ||
-    Object.keys(state.propValues).length > 0 ||
-    Object.keys(design).length > 0;
+  const dirty = isCustomized(state);
 
   const setToken = (id: string, value: string) =>
-    setState((s) => ({ ...s, tokenOverrides: { ...s.tokenOverrides, [id]: value } }));
+    onChange({ ...state, tokenOverrides: { ...state.tokenOverrides, [id]: value } });
   const setProp = (name: string, value: unknown) =>
-    setState((s) => ({ ...s, propValues: { ...s.propValues, [name]: value } }));
+    onChange({ ...state, propValues: { ...state.propValues, [name]: value } });
   // Empty value = "unset": drop the key so it produces no CSS and clears dirty.
-  const setDesign = (id: string, value: string) =>
-    setState((s) => {
-      const next = { ...(s.designOverrides ?? {}) };
-      if (value === '') delete next[id];
-      else next[id] = value;
-      return { ...s, designOverrides: next };
-    });
+  const setDesign = (id: string, value: string) => {
+    const next = { ...design };
+    if (value === '') delete next[id];
+    else next[id] = value;
+    onChange({ ...state, designOverrides: next });
+  };
 
   return (
     <div className={styles.pane}>
@@ -100,7 +110,7 @@ export function CustomizePane({
         <button
           type="button"
           className={styles.reset}
-          onClick={() => setState(EMPTY_CUSTOMIZATION)}
+          onClick={() => onChange(EMPTY_CUSTOMIZATION)}
           disabled={!dirty}
         >
           Reset

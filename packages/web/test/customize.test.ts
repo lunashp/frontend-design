@@ -4,6 +4,12 @@ import {
   patchEntryProps,
   injectTokenOverrides,
   customizeSpec,
+  getCustomization,
+  setCustomization,
+  isCustomized,
+  sortTokensByUsage,
+  EMPTY_CUSTOMIZATION,
+  type CustomizationMap,
 } from '../src/lib/customize.js';
 import { emitDesignCss, emitDesignRule } from '../src/lib/design-overrides.js';
 import type { ComponentArtifact, Token } from '../src/api/types.js';
@@ -84,6 +90,76 @@ describe('customizeSpec', () => {
     expect(spec.files['/tokens.css']).toContain('--color-1: #e11d48;');
     expect(spec.files['/index.tsx']).toContain('setProperty');
     expect(spec.files['/index.tsx']).toContain('#e11d48');
+  });
+});
+
+describe('customization map (survives tab + card switches)', () => {
+  it('returns the empty state for an unknown or null id', () => {
+    const empty: CustomizationMap = new Map();
+    expect(getCustomization(empty, 'nope')).toBe(EMPTY_CUSTOMIZATION);
+    expect(getCustomization(empty, null)).toBe(EMPTY_CUSTOMIZATION);
+  });
+
+  it('keeps each component’s edits under its own id', () => {
+    const a = { ...EMPTY_CUSTOMIZATION, tokenOverrides: { t1: '#f00' } };
+    const b = { ...EMPTY_CUSTOMIZATION, propValues: { open: true } };
+    const map = setCustomization(setCustomization(new Map(), 'A', a), 'B', b);
+    expect(getCustomization(map, 'A')).toEqual(a);
+    expect(getCustomization(map, 'B')).toEqual(b);
+  });
+
+  it('does not mutate the map it is given', () => {
+    const before: CustomizationMap = new Map();
+    const after = setCustomization(before, 'A', EMPTY_CUSTOMIZATION);
+    expect(before.size).toBe(0);
+    expect(after.size).toBe(1);
+    expect(after).not.toBe(before);
+  });
+
+  it('replaces an existing entry rather than merging it', () => {
+    const first = setCustomization(new Map(), 'A', {
+      ...EMPTY_CUSTOMIZATION,
+      tokenOverrides: { t1: '#f00' },
+    });
+    const second = setCustomization(first, 'A', EMPTY_CUSTOMIZATION);
+    expect(getCustomization(second, 'A').tokenOverrides).toEqual({});
+  });
+});
+
+describe('isCustomized', () => {
+  it('is false for the empty state', () => {
+    expect(isCustomized(EMPTY_CUSTOMIZATION)).toBe(false);
+  });
+  it('is true when any of tokens, props or design are set', () => {
+    expect(isCustomized({ ...EMPTY_CUSTOMIZATION, tokenOverrides: { t1: '#f00' } })).toBe(true);
+    expect(isCustomized({ ...EMPTY_CUSTOMIZATION, propValues: { open: true } })).toBe(true);
+    expect(isCustomized({ ...EMPTY_CUSTOMIZATION, designOverrides: { radius: '8' } })).toBe(true);
+  });
+  it('tolerates a state predating designOverrides', () => {
+    expect(isCustomized({ tokenOverrides: {}, propValues: {} })).toBe(false);
+  });
+});
+
+describe('sortTokensByUsage', () => {
+  const used = (id: string, name: string, count: number): Token => ({
+    ...token(id, name, '#000'),
+    usages: Array.from({ length: count }, (_, i) => ({
+      file: '/src/A.module.css',
+      line: i + 1,
+      property: 'color',
+      selector: '.a',
+    })),
+  });
+
+  it('puts the most-used tokens first', () => {
+    const sorted = sortTokensByUsage([used('a', '--c-1', 1), used('b', '--c-2', 9)]);
+    expect(sorted.map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
+  it('breaks ties by token name, and does not mutate the input', () => {
+    const input = [used('b', '--c-2', 3), used('a', '--c-1', 3)];
+    expect(sortTokensByUsage(input).map((t) => t.name)).toEqual(['--c-1', '--c-2']);
+    expect(input.map((t) => t.id)).toEqual(['b', 'a']);
   });
 });
 

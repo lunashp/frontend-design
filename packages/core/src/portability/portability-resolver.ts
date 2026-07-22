@@ -18,6 +18,7 @@ import {
   isUnstubbableNextModule,
   stubPath,
   stubSource,
+  stubbedCapabilityLost,
   stubbedPackageOf,
 } from '../sandbox/next-stubs.js';
 import { classifySpecifier, resolveLocalSpecifier, STYLE_EXT, ASSET_EXT } from '../graph/resolve-module.js';
@@ -343,6 +344,13 @@ export function resolvePortability(
   for (const spec of stubbedSpecs) {
     files[stubPath(spec)] = stubSource(spec);
   }
+  // Every substitution is disclosed with the capability it costs. Sorted so the
+  // list is stable regardless of the order the graph happened to visit files.
+  const stubbedModules = [...stubbedSpecs].sort().map((spec) => ({
+    specifier: spec,
+    replacedWith: stubPath(spec),
+    lost: stubbedCapabilityLost(spec),
+  }));
   if (unstubbableSpecs.size > 0) {
     warnings.push(
       `Uses server-only Next.js modules that cannot be stubbed: ${[...unstubbableSpecs].join(', ')}.`,
@@ -401,9 +409,16 @@ export function resolvePortability(
     .filter((p) => graph.localFiles.has(p.file))
     .map((p) => ({ path: bundlePathOf(p.file, base), exportName: p.exportName }));
 
+  // The prose warning stays short, but must never read as if it were the whole
+  // story: the elision is stated, and `danglingImports` carries every entry.
   const dangling = findDanglingImports(files);
   if (dangling.length > 0) {
-    warnings.push(`${dangling.length} unresolved local import(s): ${dangling.slice(0, 3).join(', ')}`);
+    const shown = dangling.slice(0, 3);
+    const elided = dangling.length - shown.length;
+    warnings.push(
+      `${dangling.length} unresolved local import(s): ${shown.join(', ')}` +
+        (elided > 0 ? ` (+${elided} more; see danglingImports for the full list)` : ''),
+    );
   }
 
   return {
@@ -412,6 +427,8 @@ export function resolvePortability(
     externalDeps,
     assets: [],
     warnings,
+    stubbedModules,
+    danglingImports: dangling,
     incomplete: dangling.length > 0,
     previewTheme,
     previewMessages,

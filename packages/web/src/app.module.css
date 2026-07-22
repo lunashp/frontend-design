@@ -161,6 +161,51 @@
   overflow: hidden;
 }
 
+/* Below the breakpoint the inspector leaves the grid entirely and returns as a
+   modal slide-over (see COMPACT_QUERY in app.tsx, which mirrors this width).
+   Both layers are position:fixed, so they are unaffected by the grid areas. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in oklch, var(--bg) 62%, transparent);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: scrim-in var(--dur) var(--ease) both;
+}
+
+.slideOver {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: min(440px, 100vw);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: slide-over-in var(--dur) var(--ease) both;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-over-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .slideOver {
+    animation: none;
+  }
+}
+
 @media (max-width: 1180px) {
   .shell {
     grid-template-columns: 260px 1fr;

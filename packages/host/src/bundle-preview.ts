@@ -14,23 +14,15 @@ import { promises as fs } from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { SandpackSpec } from '@ce/core';
+import { patchEntryProps, type SandpackSpec } from '@ce/core';
 
 export interface PreviewInput {
   readonly targetRoot: string;
   readonly spec: SandpackSpec;
   /** Prop values to merge into the mounted instance (Customize prop edits). */
   readonly propOverrides?: Readonly<Record<string, unknown>>;
-}
-
-/** Merge prop overrides into the entry's `const props = {…}` literal. */
-function patchEntryProps(entry: string, propOverrides: Readonly<Record<string, unknown>>): string {
-  if (Object.keys(propOverrides).length === 0) return entry;
-  return entry.replace(/const props = (\{[\s\S]*?\});/, (full, obj: string) => {
-    // Append overrides as a spread so JSON-unfriendly base values (function
-    // stubs like __fnStub) survive; later keys win.
-    return `const props = { ...(${obj}), ...(${JSON.stringify(propOverrides)}) };`;
-  }) || entry;
+  /** Called for each problem that did not stop the preview from rendering. */
+  readonly onWarning?: (message: string) => void;
 }
 
 /** Resolve `/foo` sandbox-root specifiers to the temp bundle dir. */
@@ -56,18 +48,26 @@ function escapeForScript(js: string): string {
  * Throws with esbuild's messages if the bundle can't be built.
  */
 export async function renderPreviewHtml(input: PreviewInput): Promise<string> {
-  const { targetRoot, spec, propOverrides } = input;
+  const { targetRoot, spec, propOverrides, onWarning } = input;
   const nodeModules = path.join(targetRoot, 'node_modules');
+  const warnings: string[] = [];
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ce-preview-'));
   try {
     for (const [p, content] of Object.entries(spec.files)) {
-      const patched =
-        p === spec.entryPath && propOverrides ? patchEntryProps(content, propOverrides) : content;
+      let patched = content;
+      if (p === spec.entryPath && propOverrides) {
+        // Same merge the engine performs — one implementation, so a prop edit
+        // never behaves differently in the preview than in a copied bundle.
+        const result = patchEntryProps(content, propOverrides);
+        patched = result.entry;
+        warnings.push(...result.warnings);
+      }
       const file = path.join(dir, p);
       await fs.mkdir(path.dirname(file), { recursive: true });
       await fs.writeFile(file, patched);
     }
+    for (const message of warnings) onWarning?.(message);
 
     const result = await build({
       entryPoints: [path.join(dir, spec.entryPath)],
@@ -101,6 +101,15 @@ export async function renderPreviewHtml(input: PreviewInput): Promise<string> {
       .filter((f) => f.path.endsWith('.css'))
       .map((f) => f.text)
       .join('\n');
+
+    // A degraded merge must be visible, not silent: it also reaches the host
+    // through `onWarning`, but the iframe console is where a user looking at a
+    // wrong-looking preview actually looks.
+    const warningScript = warnings.length
+      ? `<script>${escapeForScript(
+          warnings.map((w) => `console.warn(${JSON.stringify(`[component-explorer] ${w}`)});`).join('\n'),
+        )}</script>\n`
+      : '';
 
     return `<!doctype html>
 <html>
@@ -148,6 +157,11 @@ ${css}</style>
 //  - ce:design  -> a universal override layer on the component's own root element
 //                  (#root > *), so size/colour/spacing/etc. work for ANY component
 //                  regardless of whether it exposes tokens.
+//
+// A ce:design message carries either \`sheet\` — a complete stylesheet, which is
+// what emitDesignStyleSheet() produces and the only form that can express the
+// hover / focus-visible / active states — or the legacy \`css\`, a bare
+// declaration list for the resting state that we wrap ourselves.
 window.addEventListener('message', function (e) {
   var d = e && e.data;
   if (!d) return;
@@ -162,12 +176,13 @@ window.addEventListener('message', function (e) {
       el.id = 'ce-design';
       document.head.appendChild(el);
     }
-    el.textContent = d.css ? '#root > * {' + d.css + '}' : '';
+    if (d.sheet) el.textContent = d.sheet;
+    else el.textContent = d.css ? '#root > * {' + d.css + '}' : '';
     return;
   }
 });
 </script>
-<script>${escapeForScript(js)}</script>
+${warningScript}<script>${escapeForScript(js)}</script>
 </body>
 </html>`;
   } finally {

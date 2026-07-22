@@ -5,7 +5,7 @@ import type { AtomicLevel, ComponentKind, ComponentSummary } from '../src/api/ty
 function comp(
   name: string,
   atomicLevel: AtomicLevel,
-  opts: { kind?: ComponentKind; ctx?: number; path?: string } = {},
+  opts: { kind?: ComponentKind; ctx?: number; path?: string; props?: string[] } = {},
 ): ComponentSummary {
   return {
     descriptor: { name, filePath: opts.path ?? `/p/${name}.tsx` },
@@ -14,6 +14,7 @@ function comp(
       kind: opts.kind ?? 'presentational',
       contextDependencyScore: opts.ctx ?? 0,
     },
+    propModel: { props: (opts.props ?? []).map((p) => ({ name: p })) },
   } as unknown as ComponentSummary;
 }
 
@@ -54,6 +55,39 @@ describe('applyFilters — other axes', () => {
 
   it('query matches name and path, case-insensitively', () => {
     expect(names(applyFilters(SET, { ...DEFAULT_FILTERS, query: 'filter' }))).toEqual(['FilterBar']);
+    expect(
+      names(applyFilters([comp('Card', 'atom', { path: '/p/ui/widgets/Card.tsx' })], {
+        ...DEFAULT_FILTERS,
+        query: 'WIDGETS',
+      })),
+    ).toEqual(['Card']);
+  });
+});
+
+describe('applyFilters — query matches prop names', () => {
+  const SHEET = comp('Sheet', 'organism', { props: ['open', 'onClose', 'children'] });
+  const BUTTON = comp('Button', 'atom', { props: ['variant'] });
+
+  it('finds a component by a prop it exposes', () => {
+    expect(names(applyFilters([SHEET, BUTTON], { ...DEFAULT_FILTERS, query: 'onClose' }))).toEqual([
+      'Sheet',
+    ]);
+  });
+
+  it('matches prop names case-insensitively and on a substring', () => {
+    expect(names(applyFilters([SHEET, BUTTON], { ...DEFAULT_FILTERS, query: 'varia' }))).toEqual([
+      'Button',
+    ]);
+  });
+
+  it('still excludes components whose name, path and props all miss', () => {
+    expect(applyFilters([SHEET, BUTTON], { ...DEFAULT_FILTERS, query: 'zzz' })).toEqual([]);
+  });
+
+  it('tolerates a component with no props', () => {
+    expect(names(applyFilters([comp('Icon', 'atom')], { ...DEFAULT_FILTERS, query: 'icon' }))).toEqual(
+      ['Icon'],
+    );
   });
 
   it('sorts by context score, then name', () => {

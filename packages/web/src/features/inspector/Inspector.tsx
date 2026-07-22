@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ComponentSummary } from '../../api/types.js';
 import { useArtifact } from '../../api/useArtifact.js';
 import { KIND_LABEL, RANKS } from '../../lib/taxonomy.js';
+import { editorLinks, formatLocation, relativePath } from '../../lib/editor-links.js';
+import type { CustomizationState } from '../../lib/customize.js';
+import { CopyButton } from '../../components/ui/CopyButton.js';
 import { RankChip } from '../gallery/RankChip.js';
 import { ContextMeter } from '../gallery/ContextMeter.js';
 import { PreviewPane } from '../preview/PreviewPane.js';
@@ -10,14 +13,18 @@ import { CustomizePane } from '../customize/CustomizePane.js';
 import { PropTable } from './PropTable.js';
 import styles from './Inspector.module.css';
 
-const TABS = ['Details', 'Preview', 'Portable', 'Customize'] as const;
-type Tab = (typeof TABS)[number];
+export const TABS = ['Details', 'Preview', 'Portable', 'Customize'] as const;
+export type Tab = (typeof TABS)[number];
 const ENABLED_TABS: ReadonlySet<Tab> = new Set<Tab>([
   'Details',
   'Preview',
   'Portable',
   'Customize',
 ]);
+
+/** Tabbable descendants, for the slide-over's focus trap. */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
 function DetailsBody({
   component,
@@ -27,16 +34,18 @@ function DetailsBody({
   projectRoot: string;
 }) {
   const { descriptor, classification, propModel } = component;
-  const relPath = descriptor.filePath.startsWith(projectRoot)
-    ? descriptor.filePath.slice(projectRoot.length).replace(/^\//, '')
-    : descriptor.filePath;
+  const { loc } = descriptor;
+  const relPath = relativePath(projectRoot, descriptor.filePath);
 
   return (
     <>
       <dl className={styles.meta}>
         <div>
           <dt>Source</dt>
-          <dd className={styles.mono}>{relPath}</dd>
+          <dd className={styles.mono}>
+            {relPath}
+            <span className={styles.line}>:{loc.line}</span>
+          </dd>
         </div>
         <div>
           <dt>Export</dt>
@@ -49,6 +58,22 @@ function DetailsBody({
           <dd>{RANKS[classification.atomicLevel].blurb}</dd>
         </div>
       </dl>
+
+      {/* Custom schemes fail silently when no editor is registered for them, so
+          the copy button is the fallback, not a convenience. */}
+      <div className={styles.openIn}>
+        <span className={styles.openLabel}>Open in</span>
+        {editorLinks(loc).map((link) => (
+          <a key={link.id} className={styles.editorLink} href={link.url}>
+            {link.label}
+          </a>
+        ))}
+        <CopyButton
+          text={formatLocation(loc)}
+          label="Copy path"
+          className={styles.copyPath}
+        />
+      </div>
 
       <div className={styles.meterBlock}>
         <ContextMeter score={classification.contextDependencyScore} />
@@ -68,19 +93,69 @@ function DetailsBody({
 export function Inspector({
   component,
   projectRoot,
+  tab,
+  onTabChange,
+  customization,
+  onCustomizationChange,
+  overlay = false,
   onClose,
 }: {
   component: ComponentSummary | null;
   projectRoot: string;
+  tab: Tab;
+  onTabChange: (tab: Tab) => void;
+  customization: CustomizationState;
+  onCustomizationChange: (state: CustomizationState) => void;
+  /** Rendered as a modal slide-over rather than a docked column (narrow viewports). */
+  overlay?: boolean;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>('Details');
   const id = component?.descriptor.id ?? null;
+  const panelRef = useRef<HTMLElement>(null);
 
-  // Reset to Details when a different component is opened.
+  // Modal behaviour, only while it *is* a modal: move focus in, keep Tab inside
+  // the panel, close on Escape, and hand focus back to the card that opened it.
   useEffect(() => {
-    setTab('Details');
-  }, [id]);
+    if (!overlay || !id) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panelRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const stops = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (el) => el.offsetParent !== null,
+      );
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      if (!first || !last) {
+        // Nothing focusable inside: keep focus on the panel rather than letting
+        // Tab escape to the gallery behind the scrim.
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === panel)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [overlay, id, onClose]);
 
   // Build the full artifact once for whichever tab needs it.
   const needsArtifact = tab === 'Preview' || tab === 'Portable' || tab === 'Customize';
@@ -104,7 +179,14 @@ export function Inspector({
   const { descriptor, classification } = component;
 
   return (
-    <aside className={styles.panel} aria-label={`Inspector: ${descriptor.name}`}>
+    <aside
+      ref={panelRef}
+      className={styles.panel}
+      aria-label={`Inspector: ${descriptor.name}`}
+      role={overlay ? 'dialog' : undefined}
+      aria-modal={overlay || undefined}
+      tabIndex={overlay ? -1 : undefined}
+    >
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.name}>{descriptor.name}</h2>
@@ -128,7 +210,7 @@ export function Inspector({
               className={styles.tab}
               data-active={t === tab}
               disabled={!enabled}
-              onClick={() => enabled && setTab(t)}
+              onClick={() => enabled && onTabChange(t)}
               title={enabled ? undefined : 'Arrives in a later phase'}
             >
               {t}
@@ -149,7 +231,13 @@ export function Inspector({
           ) : tab === 'Portable' ? (
             <PortablePane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : (
-            <CustomizePane artifact={artifactState.artifact} projectRoot={projectRoot} />
+            <CustomizePane
+              key={artifactState.artifact.descriptor.id}
+              artifact={artifactState.artifact}
+              projectRoot={projectRoot}
+              state={customization}
+              onChange={onCustomizationChange}
+            />
           ))}
       </div>
     </aside>

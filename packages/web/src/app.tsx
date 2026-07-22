@@ -1,18 +1,48 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useScan } from './features/scan/useScan.js';
 import { ScanForm } from './features/scan/ScanForm.js';
 import { Filters } from './features/gallery/Filters.js';
 import { CollectionSummary } from './features/gallery/CollectionSummary.js';
 import { GalleryGrid } from './features/gallery/GalleryGrid.js';
-import { Inspector } from './features/inspector/Inspector.js';
+import { Inspector, type Tab } from './features/inspector/Inspector.js';
 import { applyFilters, DEFAULT_FILTERS, type FilterState } from './lib/filter.js';
+import {
+  getCustomization,
+  setCustomization,
+  type CustomizationMap,
+  type CustomizationState,
+} from './lib/customize.js';
 import styles from './app.module.css';
+
+/** Mirrors the `max-width: 1180px` breakpoint in app.module.css, below which
+ *  the inspector column is gone and it becomes a modal slide-over instead. */
+const COMPACT_QUERY = '(max-width: 1180px)';
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
+
+  return matches;
+}
 
 export function App() {
   const scan = useScan();
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [autoScanned, setAutoScanned] = useState(false);
+  // Inspector state lives here, above the panes that edit it: those unmount on
+  // every tab switch and every card selection, and used to take the work with
+  // them. The tab is sticky too — reopening on Customize is the point.
+  const [tab, setTab] = useState<Tab>('Details');
+  const [customizations, setCustomizations] = useState<CustomizationMap>(() => new Map());
+  const compact = useMediaQuery(COMPACT_QUERY);
 
   // Auto-scan the host's default project once, for an immediate first view.
   useEffect(() => {
@@ -28,6 +58,27 @@ export function App() {
     [result, filters],
   );
   const selected = result?.components.find((c) => c.descriptor.id === selectedId) ?? null;
+
+  // Stable identity: the slide-over's focus trap keys its effect off this.
+  const closeInspector = useCallback(() => setSelectedId(null), []);
+  const onCustomizationChange = useCallback(
+    (state: CustomizationState) =>
+      setCustomizations((map) => (selectedId ? setCustomization(map, selectedId, state) : map)),
+    [selectedId],
+  );
+
+  const inspector = (
+    <Inspector
+      component={selected}
+      projectRoot={result?.projectRoot ?? ''}
+      tab={tab}
+      onTabChange={setTab}
+      customization={getCustomization(customizations, selectedId)}
+      onCustomizationChange={onCustomizationChange}
+      overlay={compact}
+      onClose={closeInspector}
+    />
+  );
 
   return (
     <div className={styles.shell}>
@@ -98,13 +149,21 @@ export function App() {
         )}
       </main>
 
-      <div className={styles.inspector}>
-        <Inspector
-          component={selected}
-          projectRoot={result?.projectRoot ?? ''}
-          onClose={() => setSelectedId(null)}
-        />
-      </div>
+      {/* Narrow viewports have no room for a docked column, so the inspector
+          becomes a modal slide-over instead of vanishing while selection
+          silently kept working. */}
+      {compact ? (
+        selected && (
+          <>
+            {/* Escape and the panel's own close button are the keyboard paths;
+                the scrim is the pointer one, so it stays out of the a11y tree. */}
+            <div className={styles.scrim} onClick={closeInspector} aria-hidden />
+            <div className={styles.slideOver}>{inspector}</div>
+          </>
+        )
+      ) : (
+        <div className={styles.inspector}>{inspector}</div>
+      )}
     </div>
   );
 }

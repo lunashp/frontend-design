@@ -6,8 +6,14 @@
  * porting. Pure string logic — no framework or DOM dependency — so it is shared
  * by every consumer (web app, MCP).
  *
+ * Interactive states are addressed by prefixing a field id with a state name and
+ * a colon — `hover:background`, `focus:borderColor`, `active:scale` — which
+ * keeps the transport a flat `Record<string, string>`; a plain unprefixed map
+ * still means "the resting state" exactly as before.
+ *
  * The web app keeps its own mirror of this module for the browser bundle (which
- * never imports @ce/core); keep the two in sync.
+ * never imports @ce/core); keep the two in sync. `design-overrides-mirror.test`
+ * fails when they drift.
  */
 
 export type DesignControlKind = 'range' | 'color' | 'select' | 'text';
@@ -110,6 +116,71 @@ export const DESIGN_GROUPS: readonly DesignGroup[] = [
   },
 ];
 
+/** Every legal design-override field id, flattened out of `DESIGN_GROUPS`. */
+export const DESIGN_FIELDS: readonly string[] = DESIGN_GROUPS.flatMap((g) =>
+  g.fields.map((f) => f.id),
+);
+
+/** Interactive states an override map can address, beyond the resting state. */
+export type DesignState = 'hover' | 'focus' | 'active';
+
+export const DESIGN_STATES: readonly DesignState[] = ['hover', 'focus', 'active'];
+
+/**
+ * Selector suffix per state. `focus` uses `:focus-visible` deliberately — a
+ * mouse click should not paint the focus treatment.
+ */
+export const DESIGN_STATE_SELECTORS: Readonly<Record<DesignState, string>> = {
+  hover: ':hover',
+  focus: ':focus-visible',
+  active: ':active',
+};
+
+/** Separates a state prefix from a field id: `hover:background`. */
+export const DESIGN_STATE_SEPARATOR = ':';
+
+const DESIGN_FIELD_SET = new Set<string>(DESIGN_FIELDS);
+const DESIGN_STATE_SET = new Set<string>(DESIGN_STATES);
+
+/** The override key addressing `field` in `state` (null state = resting). */
+export function designStateKey(state: DesignState | null, field: string): string {
+  return state === null ? field : `${state}${DESIGN_STATE_SEPARATOR}${field}`;
+}
+
+/** Split `hover:background` into its state and field; a bare id has no state. */
+export function parseDesignKey(key: string): { state: DesignState | null; field: string } {
+  const at = key.indexOf(DESIGN_STATE_SEPARATOR);
+  if (at <= 0) return { state: null, field: key };
+  const head = key.slice(0, at);
+  if (!DESIGN_STATE_SET.has(head)) return { state: null, field: key };
+  return { state: head as DesignState, field: key.slice(at + 1) };
+}
+
+/** True when `key` names a real design field, with or without a state prefix. */
+export function isDesignKey(key: string): boolean {
+  return DESIGN_FIELD_SET.has(parseDesignKey(key).field);
+}
+
+/** Partition a flat override map into its resting map and its per-state maps. */
+export function splitDesignOverrides(overrides: Readonly<Record<string, string>> = {}): {
+  base: Record<string, string>;
+  states: Partial<Record<DesignState, Record<string, string>>>;
+} {
+  const base: Record<string, string> = {};
+  const states: Partial<Record<DesignState, Record<string, string>>> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    const { state, field } = parseDesignKey(key);
+    if (state === null) {
+      base[field] = value;
+      continue;
+    }
+    const bucket = states[state] ?? {};
+    bucket[field] = value;
+    states[state] = bucket;
+  }
+  return { base, states };
+}
+
 const IMPORTANT = ' !important';
 
 /** Build the list of CSS declarations for the set overrides (each with !important). */
@@ -151,17 +222,65 @@ export function emitDesignDeclarations(overrides: Readonly<Record<string, string
   return d;
 }
 
-/** Inline declaration string for injecting into `#root > * { … }` in a preview. */
+/** One emitted rule: which state it paints, and the declarations it carries. */
+export interface DesignBlock {
+  /** null for the resting state. */
+  readonly state: DesignState | null;
+  /** Suffix to append to the target selector (empty for the resting state). */
+  readonly selectorSuffix: string;
+  readonly declarations: readonly string[];
+}
+
+/**
+ * The rules an override map implies: the resting block first, then one block
+ * per interactive state that has any override. Empty blocks are dropped.
+ */
+export function emitDesignBlocks(overrides: Readonly<Record<string, string>> = {}): DesignBlock[] {
+  const { base, states } = splitDesignOverrides(overrides);
+  const blocks: DesignBlock[] = [];
+  const baseDeclarations = emitDesignDeclarations(base);
+  if (baseDeclarations.length > 0) {
+    blocks.push({ state: null, selectorSuffix: '', declarations: baseDeclarations });
+  }
+  for (const state of DESIGN_STATES) {
+    const declarations = emitDesignDeclarations(states[state] ?? {});
+    if (declarations.length === 0) continue;
+    blocks.push({ state, selectorSuffix: DESIGN_STATE_SELECTORS[state], declarations });
+  }
+  return blocks;
+}
+
+/**
+ * Inline declaration string for injecting into `#root > * { … }` in a preview.
+ * Resting state only — a preview that wants hover/focus/active needs whole
+ * rules, so it uses `emitDesignStyleSheet` instead.
+ */
 export function emitDesignCss(overrides: Readonly<Record<string, string>> = {}): string {
   const d = emitDesignDeclarations(overrides);
   return d.length ? `${d.join('; ')};` : '';
 }
 
+/**
+ * A complete preview stylesheet: the resting rule plus one rule per interactive
+ * state, all `!important` so they win over the component's own styling.
+ */
+export function emitDesignStyleSheet(
+  overrides: Readonly<Record<string, string>> = {},
+  selector = '#root > *',
+): string {
+  return emitDesignBlocks(overrides)
+    .map((b) => `${selector}${b.selectorSuffix} { ${b.declarations.join('; ')}; }`)
+    .join('\n');
+}
+
 /** A copyable, human-readable CSS rule (no !important) targeting the component. */
 export function emitDesignRule(name: string, overrides: Readonly<Record<string, string>> = {}): string {
-  const d = emitDesignDeclarations(overrides);
-  if (d.length === 0) return '';
-  const body = d.map((decl) => `  ${decl.replace(IMPORTANT, '')};`).join('\n');
+  const blocks = emitDesignBlocks(overrides);
+  if (blocks.length === 0) return '';
   const selector = /^[A-Za-z][\w-]*$/.test(name) ? `.${name}` : '.component';
-  return `/* Design overrides for ${name} — apply to the component's root element */\n${selector} {\n${body}\n}\n`;
+  const rules = blocks.map((b) => {
+    const body = b.declarations.map((decl) => `  ${decl.replace(IMPORTANT, '')};`).join('\n');
+    return `${selector}${b.selectorSuffix} {\n${body}\n}`;
+  });
+  return `/* Design overrides for ${name} — apply to the component's root element */\n${rules.join('\n\n')}\n`;
 }

@@ -7,7 +7,12 @@
 import type { Project } from 'ts-morph';
 import type { ProjectRef, LoadedProject } from '../types/project.js';
 import type { ComponentDescriptor } from '../types/component.js';
-import type { ComponentArtifact, ComponentSummary, ScanResult } from '../types/artifact.js';
+import type {
+  ComponentArtifact,
+  ComponentSummary,
+  ScanFailure,
+  ScanResult,
+} from '../types/artifact.js';
 import type { FrameworkAdapter, FrameworkProgram } from '../types/adapter.js';
 import { ARTIFACT_VERSION } from '../types/artifact.js';
 import { AdapterRegistry } from '../adapters/registry.js';
@@ -75,6 +80,7 @@ export class EngineSession {
     this.descriptorsById = new Map(descriptors.map((d) => [d.id, d]));
 
     const warnings: string[] = [];
+    const failures: ScanFailure[] = [];
     const components: ComponentSummary[] = [];
     this.summariesById = new Map();
 
@@ -83,11 +89,21 @@ export class EngineSession {
         const propModel = this.adapter.extractProps(descriptor, this.program);
         const signals = this.adapter.extractSignals(descriptor, this.program);
         const classification = classify(descriptor, signals);
-        const summary: ComponentSummary = { descriptor, classification, propModel };
+        const summary: ComponentSummary = { descriptor, classification, signals, propModel };
         components.push(summary);
         this.summariesById.set(descriptor.id, summary);
       } catch (err) {
-        warnings.push(`Failed to analyze ${descriptor.name}: ${(err as Error).message}`);
+        // Recorded twice on purpose: `warnings` stays the human-readable log,
+        // `failures` names the component so a caller can link to the file
+        // instead of parsing the prose back apart.
+        const message = (err as Error).message;
+        warnings.push(`Failed to analyze ${descriptor.name}: ${message}`);
+        failures.push({
+          componentId: descriptor.id,
+          name: descriptor.name,
+          filePath: descriptor.filePath,
+          message,
+        });
       }
       this.logger.progress({
         phase: 'classify',
@@ -102,6 +118,7 @@ export class EngineSession {
       projectRoot: this.loaded.rootPath,
       framework: this.loaded.framework,
       components,
+      failures,
       warnings,
     };
   }
@@ -171,6 +188,7 @@ export class EngineSession {
       artifactVersion: ARTIFACT_VERSION,
       descriptor: summary.descriptor,
       classification: summary.classification,
+      signals: summary.signals,
       propModel: summary.propModel,
       bundle,
       tokenModel,

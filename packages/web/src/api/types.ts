@@ -1,7 +1,8 @@
 /**
  * DTO mirror of the engine's serialized contract. The web app depends on the
  * JSON API only — never on @ce/core directly — so the engine's Node-only deps
- * never reach the browser bundle. Keep in sync with @ce/core's artifact types.
+ * never reach the browser bundle. Keep in sync with @ce/core's artifact types —
+ * `packages/core/test/types/mirror-sync.test.ts` fails when this file drifts.
  */
 
 export type AtomicLevel = 'atom' | 'molecule' | 'organism' | 'page';
@@ -30,6 +31,18 @@ export interface ComponentDescriptor {
   loc: SourceLocation;
 }
 
+export interface ClassificationSignals {
+  childComponentCount: number;
+  jsxDepth: number;
+  hookNames: string[];
+  usesRouter: boolean;
+  usesStore: boolean;
+  usesDataFetching: boolean;
+  contextConsumers: string[];
+  isClientComponent: boolean;
+  propCount: number;
+}
+
 export interface Classification {
   atomicLevel: AtomicLevel;
   kind: ComponentKind;
@@ -54,7 +67,15 @@ export interface PropModel {
 export interface ComponentSummary {
   descriptor: ComponentDescriptor;
   classification: Classification;
+  signals: ClassificationSignals;
   propModel: PropModel;
+}
+
+export interface ScanFailure {
+  componentId: string;
+  name: string;
+  filePath: string;
+  message: string;
 }
 
 export interface ScanResult {
@@ -62,18 +83,39 @@ export interface ScanResult {
   projectRoot: string;
   framework: string;
   components: ComponentSummary[];
+  failures: ScanFailure[];
   warnings: string[];
 }
 
 export type Renderability = 'full' | 'stubbed' | 'code-only';
+export type AssetEncoding = 'file' | 'data-url';
+
+export interface AssetRef {
+  path: string;
+  encoding: AssetEncoding;
+  sourcePath: string;
+}
+
+export interface StubbedModule {
+  specifier: string;
+  replacedWith: string;
+  /** The capability given up, e.g. "client-side prefetch and route awareness". */
+  lost: string;
+}
 
 export interface PortableBundle {
   files: Record<string, string>;
   entryPath: string;
   externalDeps: Record<string, string>;
-  assets: unknown[];
+  assets: AssetRef[];
   warnings: string[];
+  stubbedModules: StubbedModule[];
+  /** Every unresolved local import, as `<file> → <specifier>`. */
+  danglingImports: string[];
   incomplete?: boolean;
+  previewTheme?: { path: string; exportName: string };
+  previewMessages?: string;
+  previewProviders?: { path: string; exportName: string }[];
 }
 
 export interface SandpackSpec {
@@ -94,6 +136,13 @@ export type TokenCategory =
   | 'shadow'
   | 'other';
 
+export interface TokenUsage {
+  file: string;
+  line: number;
+  property: string;
+  selector: string;
+}
+
 export interface Token {
   id: string;
   name: string;
@@ -101,12 +150,14 @@ export interface Token {
   category: TokenCategory;
   value: string;
   fallback: string;
-  usages: { file: string; line: number; property: string; selector: string }[];
+  usages: TokenUsage[];
   source: 'extracted' | 'derived' | 'user';
 }
 
 export interface TokenModel {
   tokens: Token[];
+  /** Optional named theme presets: theme -> (tokenId -> value). */
+  themes?: Record<string, Record<string, string>>;
 }
 
 export interface ComponentArtifact extends ComponentSummary {

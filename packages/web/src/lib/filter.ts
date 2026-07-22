@@ -22,6 +22,16 @@ export const DEFAULT_FILTERS: FilterState = {
   designOnly: true,
 };
 
+/**
+ * Name + path + prop names. Prop names are the best discriminator when you
+ * don't know what a component is called: "onClose" finds the Dialog you had
+ * been searching for as "Modal".
+ */
+function haystack(c: ComponentSummary): string {
+  const propNames = c.propModel.props.map((p) => p.name).join(' ');
+  return `${c.descriptor.name} ${c.descriptor.filePath} ${propNames}`.toLowerCase();
+}
+
 export function applyFilters(
   components: readonly ComponentSummary[],
   f: FilterState,
@@ -33,10 +43,7 @@ export function applyFilters(
       if (f.presentationalOnly && c.classification.kind !== 'presentational') return false;
       if (f.ranks.length && !f.ranks.includes(c.classification.atomicLevel)) return false;
       if (f.kinds.length && !f.kinds.includes(c.classification.kind)) return false;
-      if (q) {
-        const hay = `${c.descriptor.name} ${c.descriptor.filePath}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+      if (q && !haystack(c).includes(q)) return false;
       return true;
     })
     .slice()
