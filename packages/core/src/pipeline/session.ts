@@ -130,7 +130,10 @@ export class EngineSession {
       try {
         const propModel = this.adapter.extractProps(descriptor, this.program);
         const signals = this.adapter.extractSignals(descriptor, this.program);
-        const classification = classify(descriptor, signals);
+        // Pass the prop model so the role facet can read the prop contract; the
+        // buildArtifact path reuses this same classification wholesale, so the
+        // role rides onto the full artifact for free.
+        const classification = classify(descriptor, signals, propModel);
         baseSummaries.push({ descriptor, classification, signals, propModel });
       } catch (err) {
         // Recorded twice on purpose: `warnings` stays the human-readable log,

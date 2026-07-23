@@ -28,6 +28,7 @@ import { KitButton } from './features/kit/KitButton.js';
 import { KitPane } from './features/kit/KitPane.js';
 import { CompareButton } from './features/compare/CompareButton.js';
 import { ComparePane, type CompareItem } from './features/compare/ComparePane.js';
+import { ExportCatalogButton } from './features/catalog/ExportCatalogButton.js';
 import styles from './app.module.css';
 
 /** Mirrors the `max-width: 1180px` breakpoint in app.module.css, below which
@@ -195,6 +196,14 @@ export function App() {
                   {result.projectRoot.split('/').slice(-1)[0]}
                 </span>
               </div>
+              {/* Exports the CURRENT gallery view (the filtered set) as a
+                  self-contained .html catalog — client-side, no host needed. */}
+              <ExportCatalogButton
+                components={filtered}
+                projectRoot={result.projectRoot}
+                framework={result.framework}
+                totalComponents={result.components.length}
+              />
               <CompareButton count={basket.size} onClick={() => setCompareOpen(true)} />
               <KitButton count={basket.size} onClick={() => setKitOpen(true)} />
             </div>

@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { applyFilters, DEFAULT_FILTERS, toggle } from '../src/lib/filter.js';
-import type { AtomicLevel, ComponentKind, ComponentSummary } from '../src/api/types.js';
+import type {
+  AtomicLevel,
+  ComponentKind,
+  ComponentRole,
+  ComponentSummary,
+} from '../src/api/types.js';
 
 function comp(
   name: string,
   atomicLevel: AtomicLevel,
   opts: {
     kind?: ComponentKind;
+    role?: ComponentRole;
     ctx?: number;
     path?: string;
     props?: string[];
@@ -20,6 +26,7 @@ function comp(
     classification: {
       atomicLevel,
       kind: opts.kind ?? 'presentational',
+      role: opts.role,
       contextDependencyScore: opts.ctx ?? 0,
     },
     signals: { hookNames: opts.hooks ?? [], contextConsumers: opts.contexts ?? [] },
@@ -208,6 +215,43 @@ describe('applyFilters — sort order (reuse signal)', () => {
   it('treats a summary with no usage as 0 rather than throwing', () => {
     const mixed = [comp('A', 'atom', { used: 5 }), comp('B', 'atom')];
     expect(names(applyFilters(mixed, { ...DEFAULT_FILTERS, sort: 'mostUsed' }))).toEqual(['A', 'B']);
+  });
+});
+
+describe('applyFilters — role facet', () => {
+  const ROLES: ComponentSummary[] = [
+    comp('SubmitButton', 'atom', { role: 'action' }),
+    comp('EmailInput', 'atom', { role: 'form-control' }),
+    comp('UserTable', 'organism', { role: 'data-display', kind: 'container' }),
+    comp('MainNav', 'molecule', { role: 'navigation' }),
+    comp('Mystery', 'atom', { role: 'other' }),
+  ];
+
+  it('shows everything when no role is selected (additive, no default hiding)', () => {
+    expect(applyFilters(ROLES, DEFAULT_FILTERS)).toHaveLength(5);
+    expect(DEFAULT_FILTERS.roles).toEqual([]);
+  });
+
+  it('narrows to a single selected role', () => {
+    const out = applyFilters(ROLES, { ...DEFAULT_FILTERS, roles: ['form-control'] });
+    expect(names(out)).toEqual(['EmailInput']);
+  });
+
+  it('unions multiple selected roles', () => {
+    const out = applyFilters(ROLES, { ...DEFAULT_FILTERS, roles: ['action', 'navigation'] });
+    expect(names(out).sort()).toEqual(['MainNav', 'SubmitButton']);
+  });
+
+  it('excludes a component with no role once a role chip is active', () => {
+    // `Mystery` (role 'other') must not slip through a positive role filter.
+    const out = applyFilters(ROLES, { ...DEFAULT_FILTERS, roles: ['data-display'] });
+    expect(names(out)).toEqual(['UserTable']);
+  });
+
+  it('tolerates a summary whose role is absent (hand-built / older payload)', () => {
+    const noRole = comp('Legacy', 'atom'); // role undefined
+    expect(applyFilters([noRole], DEFAULT_FILTERS)).toHaveLength(1);
+    expect(applyFilters([noRole], { ...DEFAULT_FILTERS, roles: ['action'] })).toEqual([]);
   });
 });
 

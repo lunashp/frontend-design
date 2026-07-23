@@ -1,10 +1,25 @@
-import type { AtomicLevel, ComponentKind } from '../../api/types.js';
+import type { AtomicLevel, ComponentKind, ComponentRole } from '../../api/types.js';
 import { KIND_LABEL, RANKS, RANK_ORDER } from '../../lib/taxonomy.js';
 import { toggle, type FilterState, type SortOrder } from '../../lib/filter.js';
 import type { DirectoryFacet } from '../../lib/source-area.js';
 import styles from './Filters.module.css';
 
 const KINDS: ComponentKind[] = ['presentational', 'container', 'layout'];
+
+/**
+ * The roles offered as filter chips, in reading order. `other` is deliberately
+ * absent — it is the "no confident role" catch-all, not a category worth
+ * filtering TO — mirroring how the atomic-level facet hides `page` under the
+ * design-only default.
+ */
+const ROLE_CHIPS: { value: ComponentRole; label: string }[] = [
+  { value: 'action', label: 'Action' },
+  { value: 'form-control', label: 'Form control' },
+  { value: 'data-display', label: 'Data display' },
+  { value: 'navigation', label: 'Navigation' },
+  { value: 'feedback', label: 'Feedback' },
+  { value: 'layout', label: 'Layout' },
+];
 
 /** Sort options, paired with the label the control shows for each. */
 const SORTS: { value: SortOrder; label: string }[] = [
@@ -136,6 +151,25 @@ export function Filters({
             );
           })}
         </div>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend className="eyebrow">Role</legend>
+        <div className={styles.chips}>
+          {ROLE_CHIPS.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              className={styles.kind}
+              data-active={filters.roles.includes(r.value)}
+              aria-pressed={filters.roles.includes(r.value)}
+              onClick={() => set({ roles: toggle(filters.roles, r.value) })}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <span className={styles.hint}>what the component is for</span>
       </fieldset>
 
       <fieldset className={styles.group}>

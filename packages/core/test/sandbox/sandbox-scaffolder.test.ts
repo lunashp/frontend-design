@@ -21,6 +21,7 @@ function input(over: Partial<ScaffoldInput> = {}): ScaffoldInput {
     classification: {
       atomicLevel: 'atom',
       kind: 'presentational',
+      role: 'other',
       contextDependencyScore: 0,
       confidence: 0.8,
     },
@@ -52,6 +53,7 @@ const WRAPPED: ProviderStubResult = {
 const CONTEXTUAL = {
   atomicLevel: 'molecule',
   kind: 'container',
+  role: 'other',
   contextDependencyScore: 3,
   confidence: 0.8,
 } as const;

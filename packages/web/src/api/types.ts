@@ -7,6 +7,15 @@
 
 export type AtomicLevel = 'atom' | 'molecule' | 'organism' | 'page';
 export type ComponentKind = 'presentational' | 'container' | 'layout';
+/** What a component is FOR — mirrors @ce/core's `ComponentRole`. */
+export type ComponentRole =
+  | 'form-control'
+  | 'data-display'
+  | 'navigation'
+  | 'feedback'
+  | 'action'
+  | 'layout'
+  | 'other';
 export type ControlKind =
   | 'boolean'
   | 'enum'
@@ -41,11 +50,20 @@ export interface ClassificationSignals {
   contextConsumers: string[];
   isClientComponent: boolean;
   propCount: number;
+  /** Lowercase DOM element names the component renders (role-facet evidence). */
+  domTags?: string[];
+  /** Explicit `role="…"` attribute values, lowercased. */
+  ariaRoles?: string[];
 }
 
 export interface Classification {
   atomicLevel: AtomicLevel;
   kind: ComponentKind;
+  /**
+   * What the component is FOR. Optional in the DTO only so hand-built fixtures
+   * may omit it — a real scan always sends it; see @ce/core's `Classification`.
+   */
+  role?: ComponentRole;
   contextDependencyScore: number;
   confidence: number;
 }

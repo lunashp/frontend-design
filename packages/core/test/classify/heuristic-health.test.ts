@@ -42,6 +42,7 @@ function summary(index: number, over: Partial<ClassificationSignals> = {}): Comp
     classification: {
       atomicLevel: 'atom',
       kind: 'presentational',
+      role: 'other',
       contextDependencyScore: 0,
       confidence: 0.8,
     },

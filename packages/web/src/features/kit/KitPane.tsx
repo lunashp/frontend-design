@@ -5,7 +5,9 @@ import { zipSync } from '../../lib/zip.js';
 import { downloadBytes } from './download.js';
 import { describeConflicts, formatInstallCommand, kitFilesDump } from './kit-format.js';
 import { KitFileList } from './KitFileList.js';
-import { useKit } from './useKit.js';
+import { KitRetheme } from './KitRetheme.js';
+import { rethemeKitFiles, rethemeKitTokensCss } from './kit-retheme.js';
+import { kitCacheKey, useKit } from './useKit.js';
 import styles from './KitPane.module.css';
 
 const FOCUSABLE =
@@ -45,10 +47,26 @@ export function KitPane({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [includeSourceApp, setIncludeSourceApp] = useState(false);
+  // The kit's bulk re-theme: ONE override map (token id → value) applied across
+  // the whole shared token namespace. Owned here so the downloaded tokens.css,
+  // the copy-all dump, and the file browser all regenerate from the same edits.
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
   // Fetched here, so a kit is built only while the drawer is open — not eagerly
   // on every basket toggle, which would re-scan + rebuild on the host each time.
   const { status, kit, error } = useKit(projectRoot, ids);
   const isEmpty = ids.length === 0;
+
+  // A different basket re-tokenizes to different token ids, so overrides carried
+  // over from the previous set could no longer name real tokens. Reset to the new
+  // kit's original theme when the id-set changes — the render-time "reset state on
+  // prop change" pattern (no effect, no wasted paint), keyed by the same sorted-id
+  // string the kit cache uses.
+  const kitKey = kitCacheKey(projectRoot, ids);
+  const [prevKitKey, setPrevKitKey] = useState(kitKey);
+  if (kitKey !== prevKitKey) {
+    setPrevKitKey(kitKey);
+    setOverrides({});
+  }
 
   // Modal keyboard contract: focus the panel on open, trap Tab inside it, close
   // on Escape, and return focus to the opener on close — the same WCAG 2.1.2
@@ -101,9 +119,23 @@ export function KitPane({
     () => new Set(Object.values(kit?.entryPaths ?? {})),
     [kit],
   );
+
+  // The kit's one shared token set, and the file map / tokens.css regenerated with
+  // the current re-theme applied. Everything the user downloads or copies is built
+  // from `rethemedFiles`, never the raw `kit.files`, so the overrides are honest —
+  // an empty override map reproduces the engine's original sheet byte-for-byte.
+  const tokens = useMemo(() => kit?.tokenModel.tokens ?? [], [kit]);
+  const rethemedFiles = useMemo(
+    () => (kit ? rethemeKitFiles(kit.files, kit.tokensCssPath, tokens, overrides) : {}),
+    [kit, tokens, overrides],
+  );
+  const rethemedTokensCss = useMemo(
+    () => (kit ? rethemeKitTokensCss(tokens, overrides) : ''),
+    [kit, tokens, overrides],
+  );
   const copySet = useMemo(
-    () => (kit ? copyableFiles(kit.files, sourceApp, includeSourceApp) : {}),
-    [kit, sourceApp, includeSourceApp],
+    () => copyableFiles(rethemedFiles, sourceApp, includeSourceApp),
+    [rethemedFiles, sourceApp, includeSourceApp],
   );
 
   const installCommand = kit ? formatInstallCommand(kit.externalDeps) : null;
@@ -222,14 +254,23 @@ export function KitPane({
                 )}
               </section>
 
+              <KitRetheme
+                projectRoot={projectRoot}
+                ids={ids}
+                tokens={tokens}
+                bundleFiles={kit.files}
+                overrides={overrides}
+                onChange={setOverrides}
+              />
+
               <section className={styles.section}>
                 <div className={styles.tokensBlock}>
                   <div className={styles.tokensHead}>
                     <span className={styles.tokensTitle}>{kit.tokensCssPath}</span>
-                    <CopyButton text={kit.tokensCss} label="Copy" />
+                    <CopyButton text={rethemedTokensCss} label="Copy" />
                   </div>
                   <pre className={styles.tokensCode}>
-                    <code>{kit.tokensCss}</code>
+                    <code>{rethemedTokensCss}</code>
                   </pre>
                 </div>
               </section>
@@ -237,7 +278,7 @@ export function KitPane({
               <section className={styles.section}>
                 <span className="eyebrow">Merged files</span>
                 <KitFileList
-                  files={kit.files}
+                  files={rethemedFiles}
                   entryPaths={entryPathSet}
                   tokensCssPath={kit.tokensCssPath}
                   sourceApp={sourceApp}

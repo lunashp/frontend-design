@@ -53,6 +53,31 @@ describe('extractSignals — store detection', () => {
   });
 });
 
+describe('extractSignals — rendered DOM elements + ARIA roles (role facet evidence)', () => {
+  it('collects lowercase intrinsic tags as domTags, not child components', () => {
+    const s = signalsOf(
+      'export function Widget() { return <label><input type="text" /></label>; }',
+    );
+    expect(s.domTags).toContain('input');
+    expect(s.domTags).toContain('label');
+    // Capitalized tags stay child components; DOM tags are separate.
+    expect(s.childComponentCount).toBe(0);
+  });
+
+  it('records an explicit string role attribute, lowercased', () => {
+    const s = signalsOf('export function Widget() { return <div role="dialog">x</div>; }');
+    expect(s.ariaRoles).toContain('dialog');
+    expect(s.domTags).toContain('div');
+  });
+
+  it('skips a computed role={x} it cannot read statically', () => {
+    const s = signalsOf(
+      'export function Widget({ r }: { r: string }) { return <div role={r}>x</div>; }',
+    );
+    expect(s.ariaRoles).toEqual([]);
+  });
+});
+
 describe('extractSignals — context consumers', () => {
   it('records useTheme as a context consumer (the classifier decides what it costs)', () => {
     const s = signalsOf(

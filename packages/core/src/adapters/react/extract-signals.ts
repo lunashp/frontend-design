@@ -39,11 +39,32 @@ const EMPTY: ClassificationSignals = {
   contextConsumers: [],
   isClientComponent: true,
   propCount: 0,
+  domTags: [],
+  ariaRoles: [],
 };
 
 function jsxTagName(node: Node): string | null {
   if (Node.isJsxOpeningElement(node) || Node.isJsxSelfClosingElement(node)) {
     return node.getTagNameNode().getText();
+  }
+  return null;
+}
+
+/**
+ * The static string value of `role="…"` on an element, or null. Only a literal
+ * value is read — a computed `role={x}` is honestly unknowable, so it is skipped
+ * rather than guessed (a wrong role signal is worse than none).
+ */
+function roleAttrValue(node: Node): string | null {
+  if (!Node.isJsxOpeningElement(node) && !Node.isJsxSelfClosingElement(node)) return null;
+  const attr = node.getAttribute('role');
+  if (!attr || !Node.isJsxAttribute(attr)) return null;
+  const init = attr.getInitializer();
+  if (init && Node.isStringLiteral(init)) return init.getLiteralValue();
+  // `role={"dialog"}` — a string literal wrapped in an expression container.
+  if (init && Node.isJsxExpression(init)) {
+    const expr = init.getExpression();
+    if (expr && Node.isStringLiteral(expr)) return expr.getLiteralValue();
   }
   return null;
 }
@@ -103,20 +124,30 @@ export function extractSignals(
 
   const imports = importedFrom(decl.getSourceFile());
   const childTags = new Set<string>();
+  const domTags = new Set<string>();
+  const ariaRoles = new Set<string>();
   const hookNames = new Set<string>();
   const contextConsumers = new Set<string>();
   let usesRouter = false;
   let usesStore = false;
   let usesDataFetching = false;
 
-  // Child components: capitalized JSX tags.
+  // JSX elements: capitalized tags are child components; lowercase tags are the
+  // intrinsic DOM elements the component renders (evidence for the role facet).
+  // The `role="…"` attribute is harvested in the same pass — no second AST walk.
   for (const kind of [SyntaxKind.JsxOpeningElement, SyntaxKind.JsxSelfClosingElement]) {
     for (const el of body.getDescendantsOfKind(kind)) {
       const tag = jsxTagName(el);
-      if (tag && /^[A-Z]/.test(tag)) {
-        childTags.add(tag);
-        if (ROUTER_TAGS.has(tag)) usesRouter = true;
+      if (tag) {
+        if (/^[A-Z]/.test(tag)) {
+          childTags.add(tag);
+          if (ROUTER_TAGS.has(tag)) usesRouter = true;
+        } else if (/^[a-z]/.test(tag)) {
+          domTags.add(tag);
+        }
       }
+      const role = roleAttrValue(el);
+      if (role) for (const r of role.split(/\s+/).filter(Boolean)) ariaRoles.add(r.toLowerCase());
     }
   }
 
@@ -154,5 +185,7 @@ export function extractSignals(
     contextConsumers: [...contextConsumers],
     isClientComponent,
     propCount: firstParamPropCount(decl),
+    domTags: [...domTags],
+    ariaRoles: [...ariaRoles],
   };
 }

@@ -1,6 +1,6 @@
 /** Filtering + sorting for the gallery. Low context score first = renders most reliably. */
 
-import type { AtomicLevel, ComponentKind, ComponentSummary } from '../api/types.js';
+import type { AtomicLevel, ComponentKind, ComponentRole, ComponentSummary } from '../api/types.js';
 import { isDesignArea, relativeDir, relativePath, sourceArea } from './source-area.js';
 
 /**
@@ -16,6 +16,13 @@ export interface FilterState {
   query: string;
   ranks: AtomicLevel[];
   kinds: ComponentKind[];
+  /**
+   * What the components are FOR (role facet). Additive and reversible, exactly
+   * like `ranks`/`kinds`: empty shows everything, any selection narrows to the
+   * union. Never hides by default — a component with no/`other` role only drops
+   * out once a positive role chip is active.
+   */
+  roles: ComponentRole[];
   presentationalOnly: boolean;
   sort: SortOrder;
   /** Show only genuine design components, hiding the categories that dominate a
@@ -35,6 +42,7 @@ export const DEFAULT_FILTERS: FilterState = {
   query: '',
   ranks: [],
   kinds: [],
+  roles: [],
   presentationalOnly: false,
   sort: 'reliability',
   designOnly: true,
@@ -85,6 +93,10 @@ export function applyFilters(
       if (f.presentationalOnly && c.classification.kind !== 'presentational') return false;
       if (f.ranks.length && !f.ranks.includes(c.classification.atomicLevel)) return false;
       if (f.kinds.length && !f.kinds.includes(c.classification.kind)) return false;
+      // A role chip is a positive filter: a summary with no role (older payload
+      // or hand-built) drops out rather than matching every selection.
+      const role = c.classification.role;
+      if (f.roles.length && (role === undefined || !f.roles.includes(role))) return false;
       if (q && !haystack(c).includes(q)) return false;
       return true;
     })
