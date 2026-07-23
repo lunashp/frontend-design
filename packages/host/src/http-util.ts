@@ -56,6 +56,22 @@ export function sendHtml(res: ServerResponse, status: number, html: string): voi
   res.end(html);
 }
 
+/**
+ * Send a PNG with a content-addressed ETag so a re-request for the same pixels
+ * revalidates cheaply (a 304 body-less reply) while a re-scan that changes the
+ * ETag fetches fresh. `no-cache` forces that revalidation rather than letting a
+ * browser serve a stale render across a re-scan at the same URL.
+ */
+export function sendPng(res: ServerResponse, png: Buffer, etag: string): void {
+  res.writeHead(200, {
+    'Content-Type': 'image/png',
+    'Content-Length': String(png.byteLength),
+    ETag: etag,
+    'Cache-Control': 'no-cache',
+  });
+  res.end(png);
+}
+
 export function handlePreflight(res: ServerResponse): void {
   res.writeHead(204);
   res.end();

@@ -14,12 +14,16 @@ import {
   sendJson,
   sendError,
   sendHtml,
+  sendPng,
   handlePreflight,
   readJsonBody,
   serveStatic,
 } from './http-util.js';
 import { SessionStore } from './session-store.js';
 import { renderPreviewHtml } from './bundle-preview.js';
+import { clampThumbnailWidth, shouldRenderThumbnail, thumbnailCacheKey } from './thumbnail.js';
+import { readCachedThumbnail, writeCachedThumbnail } from './thumbnail-cache.js';
+import { renderThumbnail as defaultThumbnailRenderer, type ThumbnailRenderer } from './thumbnail-renderer.js';
 
 /**
  * Loopback only. This process reads arbitrary local source, so binding every
@@ -44,6 +48,12 @@ export interface HostOptions {
   readonly portAttempts?: number;
   /** Directory holding the built web gallery. Defaults to packages/web/dist. */
   readonly webRoot?: string;
+  /**
+   * How a component is rendered to a PNG. Defaults to the real headless-Chromium
+   * renderer; injected in tests so the /api/thumbnail contract can be exercised
+   * end-to-end without launching a browser.
+   */
+  readonly renderThumbnail?: ThumbnailRenderer;
 }
 
 export interface Host {
@@ -111,6 +121,7 @@ export function createHost(options: HostOptions): Host {
   const store = new SessionStore(options.workspaceRoot);
   const clients = new Set<WebSocket>();
   const webRoot = options.webRoot ?? DEFAULT_WEB_ROOT;
+  const renderThumbnail = options.renderThumbnail ?? defaultThumbnailRenderer;
 
   const broadcast = (event: ProgressEvent): void => {
     const msg = JSON.stringify({ type: 'progress', ...event });
@@ -287,6 +298,89 @@ export function createHost(options: HostOptions): Host {
           `<!doctype html><meta charset="utf-8"><body style="font:13px/1.5 ui-monospace,monospace;color:#b4232c;padding:16px">` +
             `<strong>Preview build failed</strong><pre style="white-space:pre-wrap">${escapeHtml(message)}</pre></body>`,
         );
+      }
+    }
+
+    // Lazy, per-card thumbnail: a PNG of the component rendered in headless
+    // Chromium. GET so a gallery card's <img src> can load it. The gallery is
+    // virtualized, so only visible cards ever mount an <img> and hit this route.
+    //
+    // Contract:
+    //   200 image/png (+ ETag) — the rendered thumbnail.
+    //   304                     — If-None-Match matched; pixels unchanged.
+    //   204 (+ X-Thumbnail-Reason: code-only | unavailable | error)
+    //                           — no thumbnail; the card falls back to text.
+    //   400                     — missing path/id.
+    //   404                     — unknown component id.
+    // It never 500s or hangs on a render problem: every failure degrades to 204.
+    if (req.method === 'GET' && url.pathname === '/api/thumbnail') {
+      const projectPath = url.searchParams.get('path') ?? options.defaultProject;
+      const id = url.searchParams.get('id');
+      if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
+      if (!id) return sendError(res, 400, 'Missing "id"', 'MISSING_ID');
+
+      const widthRaw = url.searchParams.get('w');
+      const width = clampThumbnailWidth(widthRaw === null ? undefined : Number(widthRaw));
+
+      const noThumbnail = (reason: 'code-only' | 'unavailable' | 'error'): void => {
+        // 204 carries no body (an <img> treats it as an error and falls back);
+        // the reason header is for a human reading the network panel, not the UI.
+        res.writeHead(204, { 'X-Thumbnail-Reason': reason });
+        res.end();
+      };
+
+      const logger = createLogger({ onProgress: broadcast });
+      try {
+        const artifact = await store.getArtifact(projectPath, id, logger);
+        // A code-only component cannot render in isolation — the engine already
+        // decided that, so skip the browser entirely and let the card show text.
+        if (!shouldRenderThumbnail(artifact.sandpack.renderability)) return noThumbnail('code-only');
+
+        // The workspace dir (authoritative, from the session that just built the
+        // artifact) is where the on-disk PNG cache lives — under the engine's own
+        // scratch area, never the target project.
+        const workspaceDir = store.get(projectPath)?.loaded.workspaceDir;
+        const key = thumbnailCacheKey({ componentId: id, spec: artifact.sandpack, width });
+        const etag = `"${key}"`;
+
+        // The ETag is the pixel hash, so an unchanged component revalidates as a
+        // body-less 304 (instant scroll-back) and a re-scan that changes the
+        // bundle changes the ETag and refetches.
+        if (req.headers['if-none-match'] === etag) {
+          res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+          res.end();
+          return;
+        }
+
+        // Disk hit → serve instantly, no browser work. Survives page reloads and
+        // re-scans of unchanged source.
+        if (workspaceDir) {
+          const cached = await readCachedThumbnail(workspaceDir, key);
+          if (cached) return sendPng(res, cached, etag);
+        }
+
+        const png = await renderThumbnail({
+          targetRoot: path.resolve(projectPath),
+          spec: artifact.sandpack,
+          width,
+        });
+        // null = the browser is unavailable, the bundle failed, or the render
+        // timed out. All degrade to the same text-only card.
+        if (!png) return noThumbnail('unavailable');
+
+        if (workspaceDir) {
+          // Persist for later hits; a write failure (full disk) must not fail the
+          // response — worst case we render again next time.
+          await writeCachedThumbnail(workspaceDir, key, png).catch(() => {});
+        }
+        return sendPng(res, png, etag);
+      } catch (err) {
+        // An unknown id is the caller's mistake (404). Anything else is a
+        // definitive "no thumbnail", never a 500 that would break the gallery.
+        if ((err as { code?: string }).code === 'COMPONENT_NOT_FOUND') {
+          return sendError(res, 404, err instanceof Error ? err.message : 'Unknown component', 'COMPONENT_NOT_FOUND');
+        }
+        return noThumbnail('error');
       }
     }
 

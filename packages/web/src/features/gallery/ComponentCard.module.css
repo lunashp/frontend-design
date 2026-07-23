@@ -123,6 +123,81 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Rendered component preview. A FIXED height in every state (loading skeleton,
+   loaded image, or text fallback), because the gallery virtualizes by a measured
+   row pitch and all cards must stay exactly the same height — a frame that
+   collapsed on the fallback would drift every row below it. `flex: none` locks
+   the height regardless of the image's own aspect ratio. */
+.thumb {
+  position: relative;
+  flex: none;
+  height: 116px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-card) - 6px);
+  /* A quiet inset surface so a component with transparent or edge-to-edge pixels
+     still reads as sitting inside a frame rather than bleeding into the card. */
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  /* contain, not cover: show the WHOLE component, never a cropped corner — the
+     screenshot is of the component's own root box, whose aspect varies. */
+  object-fit: contain;
+  object-position: center;
+  /* Fade in on decode so a loaded thumbnail doesn't pop over the skeleton. */
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.thumbImg[data-ready='true'] {
+  opacity: 1;
+}
+
+.thumbSkeleton {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+/* Compositor-friendly shimmer: a highlight bar swept with transform:translateX,
+   not an animated background-position (which would repaint each visible card on
+   every frame — there can be ~30 mounted at once). */
+.thumbSkeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--glass-hi), transparent);
+  animation: thumbShimmer 1.4s var(--ease) infinite;
+}
+@keyframes thumbShimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thumbSkeleton::after {
+    animation: none;
+  }
+}
+
+/* Text fallback when there is no rendered preview (code-only, no browser, or a
+   render failure): the component's initials, quiet — a designed placeholder, not
+   a broken-image glyph. */
+.thumbFallback {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  user-select: none;
+}
+
 .identity {
   display: flex;
   flex-direction: column;

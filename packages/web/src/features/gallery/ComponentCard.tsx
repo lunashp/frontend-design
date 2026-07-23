@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { ComponentSummary } from '../../api/types.js';
 import { useBasket } from '../kit/basket-context.js';
 import { KIND_LABEL } from '../../lib/taxonomy.js';
 import { RankChip } from './RankChip.js';
 import { ContextMeter } from './ContextMeter.js';
+import { nextThumbnailState, thumbnailUrl, type ThumbnailState } from './thumbnail.js';
 import styles from './ComponentCard.module.css';
 
 function shortPath(filePath: string, root: string): string {
@@ -27,6 +29,15 @@ export function ComponentCard({
   const basket = useBasket();
   const picked = basket.has(descriptor.id);
 
+  // The grid is virtualized, so this card is already on screen — mounting the
+  // <img> here IS the lazy fetch. The host renders/caches the PNG; a code-only
+  // component, an absent browser, or any render failure answers 204, the <img>
+  // errors, and the frame falls back to a designed placeholder instead of a
+  // rendered preview. The frame is a fixed height in every state so the
+  // virtualized row pitch (measured, uniform across cards) never shifts.
+  const [thumb, setThumb] = useState<ThumbnailState>('loading');
+  const thumbSrc = thumbnailUrl(projectRoot, descriptor.id);
+
   // The card is itself a stretched <button> (it selects the component), so the
   // basket control CANNOT nest inside it — nested interactive elements are
   // invalid HTML and break keyboard/AT semantics. It is a sibling inside a
@@ -42,6 +53,27 @@ export function ComponentCard({
         <div className={styles.top}>
           <RankChip level={classification.atomicLevel} />
           <span className={styles.kind}>{KIND_LABEL[classification.kind]}</span>
+        </div>
+
+        {/* Decorative: the name/kind/path already identify the component to AT,
+            so a rendered preview is aria-hidden to avoid duplicate noise. */}
+        <div className={styles.thumb} aria-hidden="true">
+          {thumb !== 'unavailable' && (
+            <img
+              className={styles.thumbImg}
+              src={thumbSrc}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              data-ready={thumb === 'ready'}
+              onLoad={() => setThumb((s) => nextThumbnailState(s, 'load'))}
+              onError={() => setThumb((s) => nextThumbnailState(s, 'error'))}
+            />
+          )}
+          {thumb === 'loading' && <span className={styles.thumbSkeleton} />}
+          {thumb === 'unavailable' && (
+            <span className={styles.thumbFallback}>{descriptor.name.slice(0, 2)}</span>
+          )}
         </div>
 
         <div className={styles.identity}>
