@@ -111,6 +111,79 @@ describe('host CORS', () => {
   });
 });
 
+/** The engine's own React fixture, reached read-only over the preflight route. */
+const REACT_FIXTURE = path.resolve(import.meta.dirname, '../../core/test/fixtures/simple-react');
+
+describe('host preflight route', () => {
+  it('profiles a project without a full scan', async () => {
+    const { base } = await start();
+    const res = await fetch(`${base}/api/preflight?path=${encodeURIComponent(REACT_FIXTURE)}`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      framework: string;
+      packageName: string | null;
+      srcDirs: string[];
+      nodeModulesPresent: boolean;
+      isWorkspaceRoot: boolean;
+    };
+    expect(body.framework).toBe('react');
+    expect(body.packageName).toBe('simple-react-fixture');
+    expect(body.srcDirs.some((d) => d.endsWith('/src'))).toBe(true);
+    expect(body.nodeModulesPresent).toBe(false);
+    expect(body.isWorkspaceRoot).toBe(false);
+  });
+
+  it('lists React members for a workspace root', async () => {
+    const root = path.join(os.tmpdir(), `ce-host-ws-${Date.now()}`);
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.mkdir(path.join(root, 'packages', 'ui'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'ws-root', private: true }),
+    );
+    await fs.writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+    await fs.writeFile(
+      path.join(root, 'packages', 'ui', 'package.json'),
+      JSON.stringify({ name: '@ws/ui', dependencies: { react: '^19.0.0' } }),
+    );
+    try {
+      const { base } = await start();
+      const res = await fetch(`${base}/api/preflight?path=${encodeURIComponent(root)}`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        isWorkspaceRoot: boolean;
+        reactMembers: { name: string | null; dir: string }[];
+      };
+      expect(body.isWorkspaceRoot).toBe(true);
+      expect(body.reactMembers.map((m) => m.name)).toEqual(['@ws/ui']);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the default project when no path is given', async () => {
+    const { base } = await start({ defaultProject: REACT_FIXTURE });
+    const res = await fetch(`${base}/api/preflight`);
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { framework: string }).toMatchObject({ framework: 'react' });
+  });
+
+  it('400s when no path and no default project', async () => {
+    const { base } = await start();
+    const res = await fetch(`${base}/api/preflight`);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: 'MISSING_PATH' } });
+  });
+
+  it('422s for a nonexistent project without hanging', async () => {
+    const { base } = await start();
+    const res = await fetch(`${base}/api/preflight?path=/no/such/project`);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: { code: 'PROJECT_LOAD_FAILED' } });
+  });
+});
+
 describe('host static gallery', () => {
   it('serves the built gallery at the root', async () => {
     const { base } = await start();

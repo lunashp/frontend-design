@@ -28,6 +28,12 @@ export { scanProject } from './pipeline/scan-project.js';
 
 // Project loading + classification
 export { loadProject, type LoadProjectOptions } from './project/load-project.js';
+// Preflight: a compact "what will I scan" profile, computed without a full scan.
+export {
+  preflightProject,
+  type ProjectPreflight,
+  type PreflightMember,
+} from './project/preflight.js';
 export { classify } from './classify/classifier.js';
 export { atomicLevel } from './classify/atomic-level.js';
 export { componentKind } from './classify/kind.js';

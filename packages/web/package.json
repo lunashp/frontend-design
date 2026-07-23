@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "biome lint --error-on-warnings ."
+    "lint": "biome lint --error-on-warnings .",
+    "test:browser:gallery": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/gallery-virtualization.spec.ts"
   },
   "dependencies": {
     "@ce/core": "workspace:*",

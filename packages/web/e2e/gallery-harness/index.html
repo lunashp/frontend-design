@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gallery virtualization harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      /* The scroll container the grid must discover as its scroll parent — the
+         harness stand-in for the app's `.main` (overflow-y: auto). Full height so
+         only a window of the 1000 rows can ever be visible at once. */
+      #scroller {
+        height: 100vh;
+        overflow-y: auto;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      /* A tall block above the grid, standing in for the summary + issues panels,
+         so the grid does NOT start at scroll offset 0 — this exercises the
+         scroll-offset math, not a trivial top-anchored case. */
+      #preamble {
+        height: 220px;
+        margin-bottom: 16px;
+        border: 1px dashed #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scroller">
+      <button type="button" id="before">before</button>
+      <div id="preamble"></div>
+      <div id="root"></div>
+    </div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

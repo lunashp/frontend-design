@@ -1,5 +1,4 @@
 .card {
-  --i: 0;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -19,15 +18,12 @@
     background var(--dur) var(--ease),
     border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
-  animation: cardIn var(--dur-slow) var(--ease) backwards;
-  animation-delay: calc(var(--i) * 34ms);
-}
-
-@keyframes cardIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
+  /* No per-index entrance stagger any more. The grid is virtualized: a card at
+     index N mounts and unmounts as it scrolls through the window, so a
+     `calc(var(--i) * 34ms)` delay would (a) fade in cards mid-scroll every time
+     they re-enter, and (b) leave high indices invisible for seconds. Hover /
+     focus / selection transitions above still animate; only the birth stagger
+     is gone. */
 }
 
 /* Selection and hover are LIGHT, not a coloured bar down the edge.
@@ -81,10 +77,23 @@
 
 .name {
   font-size: var(--text-lg);
+  line-height: 1.25;
   color: var(--text);
   /* Component names are single camelCase tokens with no spaces — without an
      any-point break they overflow the card. Break the identifier instead. */
   overflow-wrap: anywhere;
+  /* Reserve exactly two lines, and clamp longer names to two. The gallery grid
+     virtualizes by fixed-height rows; if a name wrapped to a variable number of
+     lines, card heights would differ and every row below a tall card would sit a
+     few pixels off from where the windowing math placed it, accumulating into
+     visible drift over 1,000+ rows. Two reserved lines keeps every card the same
+     height. The full name is always in the inspector. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.5em;
 }
 
 .export {

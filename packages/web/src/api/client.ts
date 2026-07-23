@@ -1,6 +1,12 @@
 /** Thin client for the @ce/host HTTP + WS API. */
 
-import type { ApiError, ComponentArtifact, ProgressEvent, ScanResult } from './types.js';
+import type {
+  ApiError,
+  ComponentArtifact,
+  ProgressEvent,
+  ProjectPreflight,
+  ScanResult,
+} from './types.js';
 
 export interface Health {
   ok: boolean;
@@ -18,6 +24,16 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
 
 export async function getHealth(): Promise<Health> {
   return parseOrThrow<Health>(await fetch('/api/health'));
+}
+
+/**
+ * The pre-scan profile for a project (framework, srcDirs, aliases, node_modules,
+ * workspace members). Cheap on the host — no full scan — so the web can fetch it
+ * around the auto-scan and show the user what they are committing to.
+ */
+export async function getPreflight(path?: string): Promise<ProjectPreflight> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : '';
+  return parseOrThrow<ProjectPreflight>(await fetch(`/api/preflight${query}`));
 }
 
 export interface ScanOptions {

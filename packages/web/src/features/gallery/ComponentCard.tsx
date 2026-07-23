@@ -13,13 +13,11 @@ export function ComponentCard({
   component,
   projectRoot,
   selected,
-  index,
   onSelect,
 }: {
   component: ComponentSummary;
   projectRoot: string;
   selected: boolean;
-  index: number;
   onSelect: () => void;
 }) {
   const { descriptor, classification, propModel } = component;
@@ -29,7 +27,6 @@ export function ComponentCard({
     <button
       type="button"
       className={selected ? `${styles.card} ${styles.selected}` : styles.card}
-      style={{ ['--i' as string]: index }}
       onClick={onSelect}
       aria-pressed={selected}
     >

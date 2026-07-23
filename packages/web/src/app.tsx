@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useScan } from './features/scan/useScan.js';
+import { usePreflight } from './features/scan/usePreflight.js';
+import { preflightView } from './features/scan/preflight-view.js';
+import { PreflightCard } from './features/scan/PreflightCard.js';
 import { ScanForm } from './features/scan/ScanForm.js';
 import { Filters } from './features/gallery/Filters.js';
 import { CollectionSummary } from './features/gallery/CollectionSummary.js';
@@ -35,6 +38,7 @@ function useMediaQuery(query: string): boolean {
 
 export function App() {
   const scan = useScan();
+  const { preflight, load: loadPreflight } = usePreflight();
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [autoScanned, setAutoScanned] = useState(false);
@@ -45,15 +49,46 @@ export function App() {
   const [customizations, setCustomizations] = useState<CustomizationMap>(() => new Map());
   const compact = useMediaQuery(COMPACT_QUERY);
 
-  // Auto-scan the host's default project once, for an immediate first view.
+  // Auto-scan the host's default project once, for an immediate first view — and
+  // load its preflight profile alongside so the user sees WHAT is being scanned
+  // (framework, srcDirs, install state) while the multi-minute scan runs, instead
+  // of committing blind.
   useEffect(() => {
     if (!autoScanned && scan.status === 'idle' && scan.defaultProject) {
       setAutoScanned(true);
+      loadPreflight(scan.defaultProject);
       scan.scan();
     }
-  }, [autoScanned, scan]);
+  }, [autoScanned, scan, loadPreflight]);
 
   const result = scan.result;
+  // Keep the profile aligned with whatever project actually got scanned — covers a
+  // path typed into ScanForm, not just the default. A primitive-keyed effect so it
+  // fires once per new root, never loops.
+  const scannedRoot = result?.projectRoot ?? null;
+  const profileRoot = preflight?.rootPath ?? null;
+  useEffect(() => {
+    if (scannedRoot && scannedRoot !== profileRoot) loadPreflight(scannedRoot);
+  }, [scannedRoot, profileRoot, loadPreflight]);
+
+  // Re-target the scan at a workspace member the user picked from the diagnosis.
+  const scanMember = useCallback(
+    (path: string) => {
+      loadPreflight(path);
+      scan.scan(path, { force: true });
+    },
+    [scan, loadPreflight],
+  );
+
+  const preflightCard = preflight
+    ? preflightView(preflight, {
+        status: scan.status,
+        // The raw scanned count, not the filtered view: "no components found" is a
+        // fact about the scan, and a filter hiding them all is not that.
+        componentCount: result?.components.length ?? 0,
+        error: scan.error,
+      })
+    : null;
   const filtered = useMemo(
     () => (result ? applyFilters(result.components, filters) : []),
     [result, filters],
@@ -111,22 +146,36 @@ export function App() {
 
       <main className={styles.main}>
         {!result && scan.status !== 'error' ? (
-          <div className={styles.hero}>
-            <span className="eyebrow">Point it at a real codebase</span>
-            <h1 className={styles.heroTitle}>
-              Every component in a project,
-              <br />
-              catalogued and classified.
-            </h1>
-            <p className={styles.heroBody}>
-              Component Explorer reads a React&nbsp;+&nbsp;TypeScript project — strictly read-only —
-              and sorts its UI into an atomic taxonomy. Open one to inspect its props and how much
-              app context it needs to render in isolation.
-            </p>
-            {scan.status === 'scanning' && <p className={styles.heroScanning}>Scanning…</p>}
-          </div>
+          preflightCard ? (
+            // Once the profile resolves it replaces the marketing hero: the user
+            // now sees the concrete scan target, not a pitch, while scanning runs.
+            <div className={styles.catalogue}>
+              <PreflightCard view={preflightCard} onScanMember={scanMember} />
+              {scan.status === 'scanning' && <p className={styles.heroScanning}>Scanning…</p>}
+            </div>
+          ) : (
+            <div className={styles.hero}>
+              <span className="eyebrow">Point it at a real codebase</span>
+              <h1 className={styles.heroTitle}>
+                Every component in a project,
+                <br />
+                catalogued and classified.
+              </h1>
+              <p className={styles.heroBody}>
+                Component Explorer reads a React&nbsp;+&nbsp;TypeScript project — strictly read-only
+                — and sorts its UI into an atomic taxonomy. Open one to inspect its props and how
+                much app context it needs to render in isolation.
+              </p>
+              {scan.status === 'scanning' && <p className={styles.heroScanning}>Scanning…</p>}
+            </div>
+          )
         ) : result ? (
           <div className={styles.catalogue}>
+            {/* A slim banner on the happy path; it expands to the diagnosis rows
+                (empty gallery, missing node_modules) only when there's cause. */}
+            {preflightCard && (
+              <PreflightCard view={preflightCard} variant="banner" onScanMember={scanMember} />
+            )}
             <CollectionSummary components={result.components} shown={filtered.length} />
             {/* Failures are named, not counted: `warnings.length` was never a
                 component count in the first place, and a bare number can't be
@@ -144,6 +193,13 @@ export function App() {
               selectedId={selectedId}
               onSelect={setSelectedId}
             />
+          </div>
+        ) : preflightCard ? (
+          // The old failure screen was a dead end — a bare message and nowhere to
+          // go. The profile card now carries the diagnosis (the error, plus any
+          // "workspace root, pick a member" route out) with full context.
+          <div className={styles.catalogue}>
+            <PreflightCard view={preflightCard} onScanMember={scanMember} />
           </div>
         ) : (
           <div className={styles.hero}>

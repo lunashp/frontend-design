@@ -8,7 +8,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import http from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { createLogger, type ProgressEvent } from '@ce/core';
+import { createLogger, preflightProject, type ProgressEvent } from '@ce/core';
 import {
   applyCors,
   sendJson,
@@ -147,6 +147,22 @@ export function createHost(options: HostOptions): Host {
 
     if (route === 'GET /api/health') {
       return sendJson(res, 200, { ok: true, defaultProject: options.defaultProject ?? null });
+    }
+
+    // A "here is what I will scan" profile, without a full scan: framework +
+    // confidence, resolved srcDirs, tsconfig aliases, node_modules presence, and
+    // (for a monorepo root) the React members. GET so the web can fetch it around
+    // the auto-scan and let the user commit to the scan informed. Read-only.
+    if (req.method === 'GET' && url.pathname === '/api/preflight') {
+      const projectPath = url.searchParams.get('path') ?? options.defaultProject;
+      if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
+      try {
+        return sendJson(res, 200, preflightProject({ rootPath: projectPath }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Preflight failed';
+        const code = (err as { code?: string }).code ?? 'PREFLIGHT_FAILED';
+        return sendError(res, 422, message, code);
+      }
     }
 
     if (route === 'POST /api/scan') {

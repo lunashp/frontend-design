@@ -212,6 +212,39 @@ export interface ProgressEvent {
   ratio?: number;
 }
 
+/**
+ * Mirror of the engine's `PathAliases` (packages/core/src/types/project.ts).
+ * project.ts is not one of the artifact modules the mirror-sync test guards, so
+ * this pair is kept in sync by hand — it exists only to type the preflight DTO.
+ */
+export interface PathAliases {
+  baseUrl: string | null;
+  paths: Record<string, string[]>;
+}
+
+/** Mirror of the engine's `PreflightMember` (packages/core/src/project/preflight.ts). */
+export interface PreflightMember {
+  name: string | null;
+  dir: string;
+}
+
+/**
+ * Mirror of the engine's `ProjectPreflight` — the compact "what will I scan"
+ * profile the host returns from GET /api/preflight, computed without a full scan.
+ */
+export interface ProjectPreflight {
+  rootPath: string;
+  packageName: string | null;
+  framework: string;
+  frameworkConfidence: number;
+  frameworkReason: string;
+  srcDirs: string[];
+  pathAliases: PathAliases;
+  nodeModulesPresent: boolean;
+  isWorkspaceRoot: boolean;
+  reactMembers: PreflightMember[];
+}
+
 export interface ApiError {
   error: { message: string; code: string };
 }
