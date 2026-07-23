@@ -62,20 +62,20 @@ describe('tokenizeBundle — alpha-bearing colors (Q1)', () => {
 }
 `,
   });
-  const valueOf = (property: string): string | undefined =>
+  const tokenValueFor = (property: string): string | undefined =>
     out.tokenModel.tokens.find((t) => t.usages.some((u) => u.property === property))?.value;
 
   it('keeps alpha instead of collapsing translucent colors to solid black', () => {
     // formatHex alone rendered BOTH of these as #000000, and the :root default
     // beats the var() fallback -> a copied overlay rendered opaque black.
-    expect(valueOf('background')).toBe('#00000080');
-    expect(valueOf('border-color')).toBe('transparent');
+    expect(tokenValueFor('background')).toBe('#00000080');
+    expect(tokenValueFor('border-color')).toBe('transparent');
     expect(out.tokensCss).toContain('#00000080');
     expect(out.tokensCss).toContain('transparent');
   });
 
   it('keeps hex6 for opaque colors, so token ids only churn where alpha exists', () => {
-    expect(valueOf('color')).toBe('#3b82f6');
+    expect(tokenValueFor('color')).toBe('#3b82f6');
   });
 
   it('distinguishes two colors that differ only in alpha', () => {

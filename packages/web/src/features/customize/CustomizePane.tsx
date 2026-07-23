@@ -3,6 +3,7 @@ import type { ComponentArtifact } from '../../api/types.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
 import {
   emitRootCss,
+  emptyTokensReason,
   isCustomized,
   EMPTY_CUSTOMIZATION,
   type CustomizationState,
@@ -103,7 +104,7 @@ export function CustomizePane({
         <DesignControls overrides={design} onChange={setDesign} />
       </section>
 
-      {tokens.length > 0 && (
+      {tokens.length > 0 ? (
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <span className="eyebrow">Design tokens</span>
@@ -111,6 +112,11 @@ export function CustomizePane({
           </div>
           <TokenPanel tokens={tokens} overrides={state.tokenOverrides} onChange={setToken} />
         </section>
+      ) : (
+        // Not a net-new empty state — one honest clause so the missing token
+        // panel reads as a fact about the component, not a bug. The reason is
+        // derived from the bundle (does it ship a stylesheet of its own?).
+        <p className={styles.emptyTokens}>{emptyTokensReason(artifact.bundle.files)}</p>
       )}
 
       <PropControls props={artifact.propModel.props} values={state.propValues} onChange={setProp} />

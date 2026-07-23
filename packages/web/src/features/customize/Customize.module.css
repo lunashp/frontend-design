@@ -330,6 +330,16 @@
   cursor: not-allowed;
 }
 
+/* Why the token panel is empty (a component with no re-themeable CSS custom
+   properties). Without it the missing panel reads as a broken UI rather than a
+   fact about the component. */
+.emptyTokens {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
 .hint {
   font-size: var(--text-xs);
   line-height: 1.6;

@@ -16,17 +16,22 @@
 import {
   customizeArtifact,
   DESIGN_FIELDS,
+  DESIGN_GROUPS,
   emitDesignBlocks,
   EngineError,
+  explainContextScore,
   generateSampleProps,
+  parseDesignKey,
   TOKENS_CSS_PATH,
   type AtomicLevel,
   type ComponentArtifact,
   type ComponentDescriptor,
   type ComponentKind,
   type ComponentSummary,
+  type ContextScoreContribution,
   type CustomizationState,
   type DesignBlock,
+  type DesignField,
   type PortableBundle,
   type PropControl,
   type PropModel,
@@ -38,6 +43,14 @@ export const DEFAULT_LIST_LIMIT = 50;
 
 /** Cap on the advisory string lists (scan warnings/failures) carried on the wire. */
 const MAX_NOTES = 20;
+
+/**
+ * Cap on the `usages` carried per token row. A single token can be referenced
+ * hundreds of times; without a cap one heavily-used token would dominate the
+ * payload. The true total always rides on `usageCount`, and `usagesTruncated`
+ * flags when the list was cut — nothing is dropped silently.
+ */
+export const MAX_TOKEN_USAGES = 10;
 
 /** The design-override field ids `customize_component` accepts — the engine's own list, not a copy. */
 export const DESIGN_FIELD_IDS: readonly string[] = DESIGN_FIELDS;
@@ -175,6 +188,24 @@ export interface ComponentRow {
   readonly propCount: number;
   /** Prop names, so a component can be picked by its API without a second call. */
   readonly propNames: readonly string[];
+  /**
+   * Every term behind `contextDependencyScore`, from the engine's own explainer.
+   * A bare `6.5` cannot be reasoned about — this shows it is e.g. routing +2,
+   * store subscription +3, useAuth +1.5 — and it is the ONE definition of the
+   * weights, so an eyeless agent never re-derives (and drifts) them. Empty for a
+   * presentational atom, where the score is 0 and there is nothing to explain.
+   */
+  readonly scoreBreakdown: readonly ScoreTerm[];
+  /** Hook names this component calls, so it can be found by the hook it uses. */
+  readonly hooks: readonly string[];
+  /** Context this component reads (app + styling) — the raw signal behind the score. */
+  readonly contextConsumers: readonly string[];
+}
+
+/** One term of a row's `scoreBreakdown`: what pushed the score up, and by how much. */
+export interface ScoreTerm {
+  readonly label: string;
+  readonly weight: number;
 }
 
 export function projectComponent(c: ComponentSummary, view: ComponentView = 'compact'): ComponentRow {
@@ -194,6 +225,11 @@ export function projectComponent(c: ComponentSummary, view: ComponentView = 'com
     confidence: c.classification.confidence,
     propCount: c.propModel.props.length,
     propNames: c.propModel.props.map((p) => p.name),
+    scoreBreakdown: explainContextScore(c.signals).map(
+      (t: ContextScoreContribution): ScoreTerm => ({ label: t.label, weight: t.weight }),
+    ),
+    hooks: [...c.signals.hookNames],
+    contextConsumers: [...c.signals.contextConsumers],
   };
 }
 
@@ -309,12 +345,29 @@ export function toPortableCode(a: ComponentArtifact) {
     files: b.files,
     externalDeps: b.externalDeps,
     tokensCssPath: TOKENS_CSS_PATH,
-    tokens: a.tokenModel.tokens.map((t) => ({
-      id: t.id,
-      name: t.name,
-      value: t.value,
-      category: t.category,
-    })),
+    // Sort by usage count desc so the load-bearing tokens — the ones worth
+    // re-theming first — lead the list; a bare unsorted {name,value,category}
+    // list buried them and dropped WHERE each is used entirely. Spread first so
+    // the sort never mutates the engine's array.
+    tokens: [...a.tokenModel.tokens]
+      .sort((x, y) => y.usages.length - x.usages.length)
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        value: t.value,
+        category: t.category,
+        // 'extracted' | 'derived' | 'user' — a derived token was inferred, not
+        // authored, so an agent can weight it differently.
+        source: t.source,
+        usageCount: t.usages.length,
+        usages: t.usages.slice(0, MAX_TOKEN_USAGES).map((u) => ({
+          file: u.file,
+          line: u.line,
+          property: u.property,
+          selector: u.selector,
+        })),
+        usagesTruncated: t.usages.length > MAX_TOKEN_USAGES,
+      })),
     // The prop contract. Without it `customize_component`'s propValues is a
     // guessing game with no feedback when the guess is wrong.
     props: a.propModel.props.map(toPropSpec),
@@ -382,9 +435,142 @@ function toDesignRule(name: string, blocks: readonly DesignRuleBlock[]): string 
   );
 }
 
+/** Field id -> its spec (range bounds / select options), flattened from DESIGN_GROUPS. */
+const DESIGN_FIELD_BY_ID: ReadonlyMap<string, DesignField> = new Map(
+  DESIGN_GROUPS.flatMap((g) => g.fields.map((f) => [f.id, f] as const)),
+);
+
+/**
+ * Select fields whose contract ALSO admits a raw CSS value. Only `shadow`: its
+ * documented form is "none|sm|md|lg|xl OR raw CSS", and the emitter passes a
+ * non-preset value straight through as a box-shadow. Restricting it to the enum
+ * would reject a real `0 1px 2px #000`.
+ */
+const RAW_VALUE_SELECT_FIELDS: ReadonlySet<string> = new Set(['shadow']);
+
+/**
+ * A design override whose VALUE failed validation against DESIGN_GROUPS. Key
+ * validation (unknownDesignFields) alone let a bad value on a REAL field reach
+ * the emitter — radius:"9999" painted a 9999px corner, scale:"NaN" emitted
+ * `scale(NaN)`, shadow:"bogus" emitted `box-shadow: bogus`. `omitted` true means
+ * the value was dropped (NaN / out-of-enum); false means it was corrected and
+ * `corrected` is the value actually emitted. Bounded by the field count, so it
+ * is never truncated.
+ */
+export interface InvalidDesignValue {
+  /** The override key exactly as given (may carry a `hover:`/`focus:`/`active:` prefix). */
+  readonly key: string;
+  /** The resolved field id, with any state prefix stripped. */
+  readonly field: string;
+  readonly given: string;
+  /** The value actually emitted; absent when the override was dropped. */
+  readonly corrected?: string;
+  readonly omitted: boolean;
+  readonly reason: string;
+}
+
+/** Outcome of checking one value: a replacement string, or null to drop it. */
+interface DesignValueCheck {
+  /** The value to emit, or null to drop the override entirely. */
+  readonly value: string | null;
+  /** Set when the value was corrected or dropped; absent when it passed as-is. */
+  readonly reason?: string;
+}
+
+/**
+ * Clamp a range value into [min,max] and snap it to the field's step. A blank is
+ * the "unset" sentinel (the emitter's `has()` treats '' as no override), so it
+ * passes through untouched; a non-blank non-finite value (NaN, Infinity) is
+ * dropped rather than emitted as `scale(NaN)`.
+ */
+function checkRangeValue(field: DesignField, raw: string): DesignValueCheck {
+  if (raw.trim() === '') return { value: raw };
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return { value: null, reason: 'not a finite number' };
+
+  const min = field.min ?? -Infinity;
+  const max = field.max ?? Infinity;
+  const step = field.step !== undefined && field.step > 0 ? field.step : 0;
+  let v = n;
+  const reasons: string[] = [];
+  if (v < min) {
+    v = min;
+    reasons.push(`below min ${min}`);
+  } else if (v > max) {
+    v = max;
+    reasons.push(`above max ${max}`);
+  }
+  if (step > 0) {
+    const base = Number.isFinite(min) ? min : 0;
+    const snapped = Math.round((v - base) / step) * step + base;
+    if (snapped !== v) {
+      v = snapped;
+      reasons.push(`snapped to step ${step}`);
+    }
+  }
+  // Unchanged numerically: keep the caller's original spelling, report nothing.
+  if (v === n) return { value: raw };
+  return { value: String(v), reason: reasons.join(', ') };
+}
+
+/**
+ * Restrict a select value to its enum. `shadow` (the only raw-admitting select)
+ * additionally accepts a real CSS box-shadow — recognised by whitespace or a
+ * `(` a bare keyword like "bogus" never carries — so the escape hatch stays open
+ * while garbage is still rejected.
+ */
+function checkSelectValue(field: DesignField, raw: string): DesignValueCheck {
+  const options = field.options ?? [];
+  if (options.some((o) => o.value === raw)) return { value: raw };
+  if (RAW_VALUE_SELECT_FIELDS.has(field.id) && /[\s()]/.test(raw)) return { value: raw };
+  const allowed = options.map((o) => o.value).filter((v) => v !== '').join('|');
+  return { value: null, reason: `not one of ${allowed}` };
+}
+
+/**
+ * Value-validate a design-override map against DESIGN_GROUPS BEFORE the engine's
+ * key validation. Known fields get their value clamped (range) or enum-checked
+ * (select); unknown keys and unconstrained controls (color/text) pass through
+ * unchanged so `customizeArtifact` still reports the unknown keys and colours/
+ * widths stay free-form. Returns the corrected map to emit from, plus a parallel
+ * `invalid` list — the sibling of `unknownDesignFields`.
+ */
+function sanitizeDesignValues(overrides: Readonly<Record<string, string>>): {
+  overrides: Record<string, string>;
+  invalid: InvalidDesignValue[];
+} {
+  const out: Record<string, string> = {};
+  const invalid: InvalidDesignValue[] = [];
+  for (const [key, raw] of Object.entries(overrides)) {
+    const { field } = parseDesignKey(key);
+    const spec = DESIGN_FIELD_BY_ID.get(field);
+    // Unknown field, or a control with no bounds to enforce: leave it for the
+    // engine's key check / the emitter and move on.
+    if (!spec || (spec.control !== 'range' && spec.control !== 'select')) {
+      out[key] = raw;
+      continue;
+    }
+    const check = spec.control === 'range' ? checkRangeValue(spec, raw) : checkSelectValue(spec, raw);
+    if (check.value === null) {
+      invalid.push({ key, field, given: raw, omitted: true, reason: check.reason ?? 'invalid value' });
+      continue;
+    }
+    if (check.reason !== undefined) {
+      invalid.push({ key, field, given: raw, corrected: check.value, omitted: false, reason: check.reason });
+    }
+    out[key] = check.value;
+  }
+  return { overrides: out, invalid };
+}
+
 /** Customized output (tokens + props + design) — the `customize_component` payload. */
 export function toCustomized(a: ComponentArtifact, state: CustomizationState) {
-  const c = customizeArtifact(a, state);
+  // Correct out-of-bounds/NaN/out-of-enum design VALUES before customizing, so
+  // the emitted CSS carries the corrected value and every fix is disclosed.
+  const { overrides: designOverrides, invalid: invalidDesignValues } = sanitizeDesignValues(
+    state.designOverrides ?? {},
+  );
+  const c = customizeArtifact(a, { ...state, designOverrides });
   const knownPropNames = a.propModel.props.map((p) => p.name);
   const known = new Set(knownPropNames);
   // Emit from the VALIDATED map the engine already partitioned, so a bogus key
@@ -418,6 +604,9 @@ export function toCustomized(a: ComponentArtifact, state: CustomizationState) {
     // The engine already partitioned these (it strips the state prefix before
     // checking the field); recomputing here would call every `hover:*` key bogus.
     unknownDesignFields: c.unknownDesignFields,
+    // Values that named a real field but failed its bounds — clamped or dropped,
+    // each with the reason. The VALUE-level sibling of unknownDesignFields.
+    invalidDesignValues,
   };
 }
 

@@ -42,6 +42,18 @@ function yieldToEventLoop(): Promise<void> {
 export class EngineSession {
   private descriptorsById = new Map<string, ComponentDescriptor>();
   private summariesById = new Map<string, ComponentSummary>();
+  /**
+   * Per-id artifact memo. A ComponentArtifact is immutable (buildArtifact builds
+   * it from fresh objects and every consumer only reads or spread-copies it —
+   * host serializes it, customizeArtifact/customizeSpec return new specs) and a
+   * session is per-scan (a re-scan constructs a new EngineSession, so this map is
+   * never handed stale summaries), so caching the whole artifact for the session
+   * lifetime is safe. It exists because the web bounces
+   * Details<->Preview<->Portable<->Customize and re-opens components, and each
+   * buildArtifact re-ran the full resolvePortability + tokenizeBundle otherwise —
+   * a wasted rebuild on every one of those hits.
+   */
+  private artifactsById = new Map<string, ComponentArtifact>();
 
   private constructor(
     readonly loaded: LoadedProject,
@@ -146,6 +158,9 @@ export class EngineSession {
    * until P4.
    */
   buildArtifact(id: string): ComponentArtifact {
+    const memoized = this.artifactsById.get(id);
+    if (memoized) return memoized;
+
     const summary = this.summariesById.get(id);
     if (!summary) throw new ComponentNotFoundError(id);
 
@@ -200,7 +215,7 @@ export class EngineSession {
       providers,
     });
 
-    return {
+    const artifact: ComponentArtifact = {
       artifactVersion: ARTIFACT_VERSION,
       descriptor: summary.descriptor,
       classification: summary.classification,
@@ -210,5 +225,10 @@ export class EngineSession {
       tokenModel,
       sandpack,
     };
+    // Memoize on first build; later lookups skip resolvePortability +
+    // tokenizeBundle entirely. Safe for the session lifetime — see the
+    // `artifactsById` field comment for why the artifact can never go stale.
+    this.artifactsById.set(id, artifact);
+    return artifact;
   }
 }

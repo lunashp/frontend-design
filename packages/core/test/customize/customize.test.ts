@@ -302,27 +302,41 @@ describe('no-op elision is relative to the resting state', () => {
   });
 });
 
+// A component's real root class is unknowable from outside — CSS-module names
+// are hashed at build time and library components (MUI, …) emit their own — so a
+// literal `.MyButton { … }` rule silently matches nothing wherever it is pasted.
+// The copyable rule therefore targets a labelled PLACEHOLDER and says so; the
+// component name survives only in the explaining comment.
 describe('emitDesignRule (copyable CSS)', () => {
-  it('emits a named rule without !important', () => {
+  it('targets a placeholder root class with an explaining comment, never `.Name`', () => {
     const rule = emitDesignRule('MyButton', { color: '#111', radius: '8' });
-    expect(rule).toContain('.MyButton {');
+    expect(rule).toContain('.your-root-class {');
+    expect(rule).not.toContain('.MyButton');
+    expect(rule).toContain('PLACEHOLDER');
+    expect(rule).toContain('Design overrides for MyButton');
     expect(rule).toContain('color: #111;');
     expect(rule).toContain('border-radius: 8px;');
     expect(rule).not.toContain('!important');
   });
-  it('emits a copyable rule per interactive state', () => {
+  it('keeps every interactive state on the placeholder selector', () => {
     const rule = emitDesignRule('MyButton', { color: '#111', 'hover:color': '#222' });
-    expect(rule).toContain('.MyButton {\n  color: #111;\n}');
-    expect(rule).toContain('.MyButton:hover {\n  color: #222;\n}');
+    expect(rule).toContain('.your-root-class {\n  color: #111;\n}');
+    expect(rule).toContain('.your-root-class:hover {\n  color: #222;\n}');
+    expect(rule).not.toContain('.MyButton');
     expect(rule).not.toContain('!important');
   });
   it('emits only the state rule when nothing rests', () => {
     const rule = emitDesignRule('MyButton', { 'focus:borderColor': '#00f' });
-    expect(rule).toContain('.MyButton:focus-visible {');
-    expect(rule).not.toContain('.MyButton {');
+    expect(rule).toContain('.your-root-class:focus-visible {');
+    expect(rule).not.toContain('.your-root-class {');
   });
-  it('falls back to .component for a non-identifier name', () => {
-    expect(emitDesignRule('123 Bad', { color: '#111' })).toContain('.component {');
+  it('uses the placeholder whether or not the name is a valid identifier', () => {
+    // The name only labels the comment now, so a non-identifier name is no longer
+    // a special case — the selector is always the placeholder, never `.component`.
+    const rule = emitDesignRule('123 Bad', { color: '#111' });
+    expect(rule).toContain('.your-root-class {');
+    expect(rule).toContain('Design overrides for 123 Bad');
+    expect(rule).not.toContain('.component {');
   });
   it('is empty when nothing is set', () => {
     expect(emitDesignRule('X', {})).toBe('');
@@ -369,13 +383,14 @@ describe('customizeArtifact', () => {
     expect(out.appliedPropValues).toEqual({ variant: 'secondary' });
   });
 
-  it('emits a copyable design rule named after the component', () => {
+  it('emits a copyable design rule on the placeholder root selector', () => {
     const out = customizeArtifact(artifact, {
       tokenOverrides: {},
       propValues: {},
       designOverrides: { background: '#000', radius: '12' },
     });
-    expect(out.designCss).toContain('.MyButton {');
+    expect(out.designCss).toContain('.your-root-class {');
+    expect(out.designCss).not.toContain('.MyButton');
     expect(out.designCss).toContain('background: #000;');
     expect(out.designCss).toContain('border-radius: 12px;');
     expect(out.appliedDesignOverrides).toEqual({ background: '#000', radius: '12' });
@@ -400,7 +415,7 @@ describe('customizeArtifact', () => {
     expect(out.appliedDesignOverrides).toEqual({ radius: '12', 'hover:color': '#222' });
     expect(out.unknownDesignFields).toEqual(['borderRadius', 'hover:nope']);
     expect(out.designCss).toContain('border-radius: 12px;');
-    expect(out.designCss).toContain('.MyButton:hover {');
+    expect(out.designCss).toContain('.your-root-class:hover {');
     expect(out.designCss).not.toContain('8px');
   });
 

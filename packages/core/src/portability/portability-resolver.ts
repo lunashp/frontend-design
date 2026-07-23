@@ -169,9 +169,9 @@ function findDanglingImports(files: Record<string, string>): string[] {
     // are documentation, not real edges, and would otherwise be flagged as
     // dangling and wrongly mark the whole bundle incomplete → code-only.
     const stripped = stripComments(code);
-    SPECIFIER_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = SPECIFIER_RE.exec(stripped)) !== null) {
+    // matchAll clones the global regex per call, so no stale lastIndex leaks
+    // between files — the reason the old exec loop had to reset it by hand.
+    for (const match of stripped.matchAll(SPECIFIER_RE)) {
       const spec = match[1] as string;
       if (!spec.startsWith('.')) continue; // external/bare — resolved by Sandpack
       if (!resolves(file, spec)) dangling.push(`${file} → ${spec}`);

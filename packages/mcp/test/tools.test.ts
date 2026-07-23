@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_LIST_LIMIT,
   DESIGN_FIELD_IDS,
+  MAX_TOKEN_USAGES,
   filterComponents,
   paginate,
   projectComponent,
@@ -376,7 +377,18 @@ describe('toPortableCode', () => {
     expect(p.entryPath).toBe('/Button.tsx');
     expect(Object.keys(p.files)).toContain('/tokens.css');
     expect(p.externalDeps).toEqual({ clsx: '^2.1.1' });
-    expect(p.tokens).toEqual([{ id: 't1', name: '--color-1', value: '#3b82f6', category: 'color' }]);
+    expect(p.tokens).toEqual([
+      {
+        id: 't1',
+        name: '--color-1',
+        value: '#3b82f6',
+        category: 'color',
+        source: 'extracted',
+        usageCount: 0,
+        usages: [],
+        usagesTruncated: false,
+      },
+    ]);
     expect(p.incomplete).toBe(false);
   });
 
@@ -408,6 +420,82 @@ describe('toPortableCode', () => {
     expect(p.props[0]).toMatchObject({ name: 'label', tsType: 'string', required: true });
     expect(p.sampleProps).toMatchObject({ label: 'Label', children: 'Button' });
     expect(p.usage).toContain("import { Button } from './Button';");
+  });
+});
+
+describe('toPortableCode token rows (#4)', () => {
+  it('carries usages + source and pre-sorts tokens by usage count desc', () => {
+    // A bare {name,value,category} row hid which tokens are load-bearing: an
+    // agent could not see where a token is used or rank it by that. The rows now
+    // carry `source` + `usages` and arrive sorted by usage count, most-used first.
+    const a = artifact({
+      tokenModel: {
+        tokens: [
+          {
+            id: 't1',
+            name: '--a',
+            displayName: 'A',
+            category: 'color',
+            value: '#000',
+            fallback: '#000',
+            source: 'extracted',
+            usages: [{ file: '/Button.tsx', line: 3, property: 'color', selector: '.a' }],
+          },
+          {
+            id: 't2',
+            name: '--b',
+            displayName: 'B',
+            category: 'spacing',
+            value: '8px',
+            fallback: '8px',
+            source: 'derived',
+            usages: [
+              { file: '/Button.tsx', line: 5, property: 'padding', selector: '.b' },
+              { file: '/Button.tsx', line: 9, property: 'margin', selector: '.b2' },
+            ],
+          },
+        ],
+      },
+    });
+    const p = toPortableCode(a);
+    expect(p.tokens.map((t) => t.id)).toEqual(['t2', 't1']);
+    expect(p.tokens[0]).toMatchObject({ id: 't2', source: 'derived', usageCount: 2 });
+    expect(p.tokens[0]?.usages).toEqual([
+      { file: '/Button.tsx', line: 5, property: 'padding', selector: '.b' },
+      { file: '/Button.tsx', line: 9, property: 'margin', selector: '.b2' },
+    ]);
+    expect(p.tokens[0]?.usagesTruncated).toBe(false);
+  });
+
+  it('caps usages per token and discloses the cut', () => {
+    const many = Array.from({ length: MAX_TOKEN_USAGES + 5 }, (_, i) => ({
+      file: '/Button.tsx',
+      line: i,
+      property: 'color',
+      selector: `.s${i}`,
+    }));
+    const a = artifact({
+      tokenModel: {
+        tokens: [
+          {
+            id: 't1',
+            name: '--a',
+            displayName: 'A',
+            category: 'color',
+            value: '#000',
+            fallback: '#000',
+            source: 'extracted',
+            usages: many,
+          },
+        ],
+      },
+    });
+    const p = toPortableCode(a);
+    // usageCount is the true total (the sort key); the array is capped and the
+    // cut is disclosed rather than silently dropped.
+    expect(p.tokens[0]?.usageCount).toBe(MAX_TOKEN_USAGES + 5);
+    expect(p.tokens[0]?.usages).toHaveLength(MAX_TOKEN_USAGES);
+    expect(p.tokens[0]?.usagesTruncated).toBe(true);
   });
 });
 
@@ -495,6 +583,96 @@ describe('toCustomized', () => {
     expect(c.unknownDesignFields).toEqual(['nonsense', 'hover:nonsense']);
     expect(c.unknownDesignFields).not.toContain('hover:background');
     expect(c.appliedDesignOverrides).toEqual({ 'hover:background': '#eee' });
+  });
+});
+
+describe('toCustomized design VALUE validation (#5)', () => {
+  it('clamps out-of-range numerics, drops NaN and out-of-enum, reporting each', () => {
+    // KEY validation (unknownDesignFields) let a bad VALUE on a real field pass
+    // straight to the emitter: radius:"9999" painted a 9999px corner, scale:"NaN"
+    // emitted `scale(NaN)`, shadow:"bogus" emitted `box-shadow: bogus`.
+    const c = toCustomized(artifact(), {
+      tokenOverrides: {},
+      propValues: {},
+      designOverrides: { radius: '9999', scale: 'NaN', shadow: 'bogus' },
+    });
+    // radius is clamped to its max (48) and the CSS uses the corrected value.
+    expect(c.designCss).toContain('border-radius: 48px;');
+    // NaN scale and out-of-enum shadow are dropped from the emitted CSS entirely.
+    expect(c.designCss).not.toContain('transform: scale');
+    expect(c.designCss).not.toContain('box-shadow');
+    // Only the corrected, valid override survives on the applied map.
+    expect(c.appliedDesignOverrides).toEqual({ radius: '48' });
+
+    const byKey = Object.fromEntries(c.invalidDesignValues.map((v) => [v.key, v]));
+    expect(byKey.radius).toMatchObject({ given: '9999', corrected: '48', omitted: false });
+    expect(byKey.scale).toMatchObject({ given: 'NaN', omitted: true });
+    expect(byKey.scale.corrected).toBeUndefined();
+    expect(byKey.shadow).toMatchObject({ given: 'bogus', omitted: true });
+    expect(c.invalidDesignValues).toHaveLength(3);
+  });
+
+  it('reports no invalid values for in-range and in-enum overrides', () => {
+    const c = toCustomized(artifact(), {
+      tokenOverrides: {},
+      propValues: {},
+      designOverrides: { radius: '10', shadow: 'md', 'hover:opacity': '80' },
+    });
+    expect(c.invalidDesignValues).toEqual([]);
+  });
+
+  it('accepts a raw-CSS box-shadow despite the select options', () => {
+    // shadow's contract is "none|sm|md|lg|xl OR raw CSS" — a real box-shadow must
+    // not be mistaken for an out-of-enum value.
+    const c = toCustomized(artifact(), {
+      tokenOverrides: {},
+      propValues: {},
+      designOverrides: { shadow: '0 1px 2px rgba(0,0,0,0.3)' },
+    });
+    expect(c.invalidDesignValues).toEqual([]);
+    expect(c.designCss).toContain('box-shadow: 0 1px 2px rgba(0,0,0,0.3);');
+  });
+
+  it('validates the field behind a state prefix', () => {
+    const c = toCustomized(artifact(), {
+      tokenOverrides: {},
+      propValues: {},
+      designOverrides: { 'hover:radius': '9999' },
+    });
+    expect(c.appliedDesignOverrides).toEqual({ 'hover:radius': '48' });
+    const [only] = c.invalidDesignValues;
+    expect(only).toMatchObject({ key: 'hover:radius', field: 'radius', given: '9999', corrected: '48' });
+  });
+});
+
+describe('projectComponent score decomposition (#9)', () => {
+  it('carries the scoreBreakdown and the hook / context signal names', () => {
+    // A bare `contextDependencyScore: 6.5` cannot be reasoned about: an eyeless
+    // agent can now see it is routing+2, store+3, useAuth+1.5, and can find a
+    // component by the hook it uses.
+    const signals: ClassificationSignals = {
+      ...SIGNALS,
+      usesRouter: true,
+      usesStore: true,
+      hookNames: ['useCart', 'useAuth'],
+      contextConsumers: ['useAuth'],
+    };
+    const summary: ComponentSummary = { ...comp('Cart', 'organism', 'container', { score: 6.5 }), signals };
+    const row = projectComponent(summary);
+    expect(row.scoreBreakdown).toEqual([
+      { label: 'routing', weight: 2 },
+      { label: 'store subscription', weight: 3 },
+      { label: 'useAuth', weight: 1.5 },
+    ]);
+    expect(row.hooks).toEqual(['useCart', 'useAuth']);
+    expect(row.contextConsumers).toEqual(['useAuth']);
+  });
+
+  it('emits an empty breakdown for a presentational atom', () => {
+    const row = projectComponent(comp('Button', 'atom', 'presentational'));
+    expect(row.scoreBreakdown).toEqual([]);
+    expect(row.hooks).toEqual([]);
+    expect(row.contextConsumers).toEqual([]);
   });
 });
 

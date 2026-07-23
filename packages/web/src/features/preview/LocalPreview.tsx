@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { previewDesignMessage } from '../../lib/customize.js';
+import type { PreviewBacking } from './backing.js';
 import styles from './SandboxView.module.css';
 
 /**
@@ -19,12 +20,19 @@ export function LocalPreview({
   tokenOverrides,
   designOverrides,
   propOverrides,
+  backing,
 }: {
   projectRoot: string;
   id: string;
   tokenOverrides?: Readonly<Record<string, string>>;
   designOverrides?: Readonly<Record<string, string>>;
   propOverrides?: Readonly<Record<string, unknown>>;
+  /**
+   * Stage backing behind the iframe. Optional so existing callers (Customize)
+   * keep the neutral checkerboard; omitting it renders no `data-backing`, which
+   * the CSS treats as the default checker.
+   */
+  backing?: PreviewBacking;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -42,6 +50,10 @@ export function LocalPreview({
   const designJson = useMemo(() => JSON.stringify(designOverrides ?? {}), [designOverrides]);
 
   // Post token + design overrides on every change and once the iframe (re)loads.
+  // `src` is listed on purpose so the effect re-runs when the iframe navigates and
+  // re-posts overrides against the fresh document; an extra dep only re-runs, it
+  // never stales a value.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: src is intentional — re-run the effect when the iframe navigates.
   useEffect(() => {
     const post = () => {
       const w = iframeRef.current?.contentWindow;
@@ -59,7 +71,7 @@ export function LocalPreview({
   }, [tokensJson, designJson, src]);
 
   return (
-    <div className={styles.stage}>
+    <div className={styles.stage} data-backing={backing}>
       <iframe
         ref={iframeRef}
         className={styles.preview}

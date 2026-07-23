@@ -38,7 +38,7 @@ function walk(dir: string, depth: number, out: string[]): void {
  * Find `export const <name> = createTheme(...)`. Prefers a light theme (the app
  * default), then any. Returns the first match across the scanned source dirs.
  */
-export function detectThemeRef(rootPath: string, srcDirs: readonly string[]): ThemeRef | null {
+export function detectThemeRef(_rootPath: string, srcDirs: readonly string[]): ThemeRef | null {
   const files: string[] = [];
   for (const dir of srcDirs) walk(dir, 5, files);
 
@@ -51,9 +51,9 @@ export function detectThemeRef(rootPath: string, srcDirs: readonly string[]): Th
       continue;
     }
     if (!text.includes('createTheme')) continue;
-    THEME_EXPORT_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = THEME_EXPORT_RE.exec(text)) !== null) {
+    // matchAll clones the global regex per call, so no stale lastIndex leaks
+    // between files — the reason the old exec loop had to reset it by hand.
+    for (const m of text.matchAll(THEME_EXPORT_RE)) {
       candidates.push({ file, exportName: m[1] as string });
     }
   }
@@ -83,7 +83,7 @@ const UNSAFE_HOOK_RE = /\b(useQuery|useMutation|useRouter|usePathname|useSearchP
  * instead of throwing "must be used within a Provider".
  */
 export function detectContextProviders(
-  rootPath: string,
+  _rootPath: string,
   srcDirs: readonly string[],
 ): ProviderRef[] {
   const files: string[] = [];
@@ -99,9 +99,9 @@ export function detectContextProviders(
     }
     if (!text.includes('createContext') || !text.includes('Provider')) continue;
     if (UNSAFE_HOOK_RE.test(text)) continue; // needs data/router — skip
-    PROVIDER_EXPORT_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = PROVIDER_EXPORT_RE.exec(text)) !== null) {
+    // matchAll clones the global regex per call, so no stale lastIndex leaks
+    // between files — the reason the old exec loop had to reset it by hand.
+    for (const m of text.matchAll(PROVIDER_EXPORT_RE)) {
       out.push({ file, exportName: m[1] as string });
     }
   }

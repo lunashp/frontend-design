@@ -70,6 +70,30 @@ export function emitRootCss(tokens: readonly Token[], overrides: Record<string, 
   return `:root {\n${lines.join('\n')}\n}\n`;
 }
 
+/** The engine always writes this synthesized stylesheet into the bundle (mirrors
+ *  core's TOKENS_CSS_PATH), so it is never one of the component's OWN stylesheets
+ *  and must be excluded when deciding why a component exposes no tokens. */
+const TOKENS_CSS_PATH = '/tokens.css';
+const SOURCE_STYLE_EXT = /\.(?:css|scss|sass|less)$/i;
+
+/**
+ * Why the token panel is empty, in the component's own terms. The panel is
+ * hidden when a component exposes no re-themeable tokens; without a reason that
+ * empty area reads as a bug rather than a fact about the component. The two
+ * cases are honestly distinct and derived from the bundle, not guessed: a
+ * component that ships no stylesheet of its own is styled in CSS-in-JS or inline
+ * (nothing to extract), whereas one that ships CSS simply declared no custom
+ * properties. Either way the Design controls still restyle it.
+ */
+export function emptyTokensReason(bundleFiles: Readonly<Record<string, string>>): string {
+  const hasSourceStylesheet = Object.keys(bundleFiles).some(
+    (path) => path !== TOKENS_CSS_PATH && SOURCE_STYLE_EXT.test(path),
+  );
+  return hasSourceStylesheet
+    ? 'This component’s stylesheet declares no CSS custom properties, so there are no tokens to re-theme here. Use the Design controls above — they restyle any component.'
+    : 'This component ships no stylesheet — its styles are CSS-in-JS or inline, so there are no CSS custom properties to extract as tokens. Use the Design controls above — they restyle any component.';
+}
+
 /** The design-override payload the preview iframe applies (see @ce/host). */
 export interface PreviewDesignMessage {
   readonly type: 'ce:design';

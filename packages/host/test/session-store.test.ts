@@ -30,7 +30,12 @@ function recordingLogger(): { logger: Logger; phases: string[] } {
 /** A clock the test drives, so TTL expiry needs no real waiting. */
 function fakeClock(start = 1_000_000): { now: () => number; advance: (ms: number) => void } {
   let t = start;
-  return { now: () => t, advance: (ms) => void (t += ms) };
+  return {
+    now: () => t,
+    advance: (ms) => {
+      t += ms;
+    },
+  };
 }
 
 beforeAll(async () => {

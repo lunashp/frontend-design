@@ -24,7 +24,14 @@ import { chromium, type Browser, type Page } from 'playwright';
 import react from '@vitejs/plugin-react';
 import { createServer, type Plugin, type ViteDevServer } from 'vite';
 import { PREVIEW_KEYBOARD_BRIDGE } from '../../host/src/bundle-preview.js';
+import { BACKINGS } from '../src/features/preview/backing.js';
 import { FIXTURE_ARTIFACT, FIXTURE_NAME } from './fixture.js';
+
+// The preview stage's backing toggle (#6) renders focusable buttons just before
+// the iframe, so Shift+Tab out of the frame now lands on the last of them rather
+// than on the tab strip. Assert membership here so the test documents that
+// structural fact and still fails loudly if focus is lost to <body>.
+const BACKING_LABELS = new Set(BACKINGS.map((b) => b.label));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
@@ -184,15 +191,9 @@ async function dockedLayout(browser: Browser, url: string): Promise<void> {
     await scenario('docked: Shift+Tab at the start of the preview leaves the frame', async () => {
       await focusInPreview(page, 'preview-first');
       const active = await pressAndLeaveFrame(page, 'Shift+Tab');
-      assert.equal(
-        active.tag,
-        'button',
-        `expected a parent-document tab stop, got ${describeActive(active)}`,
-      );
-      assert.equal(
-        active.label,
-        'Customize',
-        `expected the stop before the frame, got ${describeActive(active)}`,
+      assert.ok(
+        active.tag === 'button' && BACKING_LABELS.has(active.label),
+        `expected focus to land on the backing toggle just before the frame, got ${describeActive(active)}`,
       );
       return describeActive(active);
     });
@@ -251,10 +252,11 @@ async function overlayLayout(browser: Browser, url: string): Promise<void> {
     await scenario('overlay: Shift+Tab at the start of the preview leaves the frame', async () => {
       await focusInPreview(page, 'preview-first');
       const active = await pressAndLeaveFrame(page, 'Shift+Tab');
-      assert.equal(
-        active.label,
-        'Customize',
-        `expected the stop before the frame, got ${describeActive(active)}`,
+      // Still inside the slide-over trap — the backing toggle lives in the panel —
+      // so focus left the frame without escaping to the page behind the modal.
+      assert.ok(
+        active.tag === 'button' && BACKING_LABELS.has(active.label),
+        `expected focus to land on the backing toggle inside the modal, got ${describeActive(active)}`,
       );
       return describeActive(active);
     });

@@ -63,7 +63,7 @@ describe('buildProviderStub', () => {
     expect(r.imports).toMatch(/react-hook-form/);
     expect(r.providersFile).toMatch(/__FormProvider/);
     // useForm is a hook — it must be called INSIDE the Providers component.
-    expect(r.providersFile).toMatch(/function Providers[^]*__useForm\(\)/);
+    expect(r.providersFile).toMatch(/function Providers[\s\S]*__useForm\(\)/);
   });
 
   it('wraps consuming components in detected self-contained providers', () => {

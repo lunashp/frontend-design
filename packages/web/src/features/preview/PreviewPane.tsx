@@ -1,21 +1,12 @@
-import type { ComponentArtifact, Renderability } from '../../api/types.js';
+import { useState } from 'react';
+import type { ComponentArtifact } from '../../api/types.js';
+import { BackingToggle } from './BackingToggle.js';
+import type { PreviewBacking } from './backing.js';
+import { ColourSourceCaption } from './ColourSourceCaption.js';
 import { DepsList } from './DepsList.js';
 import { LocalPreview } from './LocalPreview.js';
+import { renderabilityLabel } from './renderability.js';
 import styles from './PreviewPane.module.css';
-
-const RENDERABILITY: Record<Renderability, { label: string; tone: string; blurb: string }> = {
-  full: { label: 'Isolated render', tone: 'ok', blurb: 'Renders cleanly with no app context.' },
-  stubbed: {
-    label: 'Stubbed render',
-    tone: 'warn',
-    blurb: 'Needs app context — shown without providers; may look off.',
-  },
-  'code-only': {
-    label: 'Code only',
-    tone: 'danger',
-    blurb: "Can't run live in the sandbox.",
-  },
-};
 
 export function PreviewPane({
   artifact,
@@ -25,13 +16,19 @@ export function PreviewPane({
   projectRoot: string;
 }) {
   const spec = artifact.sandpack;
-  const meta = RENDERABILITY[spec.renderability];
+  const meta = renderabilityLabel(artifact);
+  const [backing, setBacking] = useState<PreviewBacking>('checker');
 
   return (
     <div className={styles.pane}>
       <div className={styles.badge} data-tone={meta.tone}>
         <span className={styles.badgeDot} />
         <span className={styles.badgeLabel}>{meta.label}</span>
+        {meta.stubbed.length > 0 && (
+          <span className={styles.stubCount} title="Modules swapped for local stubs — see notes below">
+            {meta.stubbed.length} stubbed
+          </span>
+        )}
         <span className={styles.badgeBlurb}>{meta.blurb}</span>
       </div>
 
@@ -42,7 +39,14 @@ export function PreviewPane({
           Portable tab.
         </div>
       ) : (
-        <LocalPreview projectRoot={projectRoot} id={artifact.descriptor.id} />
+        <>
+          <div className={styles.stageHead}>
+            <span className="eyebrow">Backing</span>
+            <BackingToggle value={backing} onChange={setBacking} />
+          </div>
+          <LocalPreview projectRoot={projectRoot} id={artifact.descriptor.id} backing={backing} />
+          <ColourSourceCaption bundle={artifact.bundle} />
+        </>
       )}
 
       {spec.notes.length > 0 && (

@@ -17,6 +17,19 @@
     -9px 0;
 }
 
+/* Backing overrides (#6): a dark-app component is invisible on a light stage and
+   vice-versa, so the backing is switchable. Light/dark drop the checker for a
+   flat ground that unambiguously reads as "on a light/dark page". No attribute
+   (the default) keeps the neutral checkerboard above. */
+.stage[data-backing='light'] {
+  background-color: oklch(99% 0 0);
+  background-image: none;
+}
+.stage[data-backing='dark'] {
+  background-color: oklch(20% 0.01 264);
+  background-image: none;
+}
+
 .preview {
   height: 340px;
   width: 100%;

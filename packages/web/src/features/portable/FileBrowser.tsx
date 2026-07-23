@@ -9,9 +9,12 @@ function basename(p: string): string {
 export function FileBrowser({
   files,
   entryPath,
+  sourceApp,
 }: {
   files: Record<string, string>;
   entryPath: string;
+  /** Files that came from the source app (theme/i18n/providers), badged distinctly. */
+  sourceApp?: ReadonlySet<string>;
 }) {
   const paths = Object.keys(files).sort((a, b) => {
     if (a === entryPath) return -1;
@@ -21,6 +24,7 @@ export function FileBrowser({
   const [selected, setSelected] = useState(entryPath in files ? entryPath : (paths[0] ?? ''));
   const active = selected in files ? selected : (paths[0] ?? '');
   const code = files[active] ?? '';
+  const isSourceApp = (p: string): boolean => sourceApp?.has(p) ?? false;
 
   return (
     <div className={styles.browser}>
@@ -32,18 +36,25 @@ export function FileBrowser({
             role="tab"
             className={styles.tab}
             data-active={p === active}
+            data-source-app={isSourceApp(p)}
             aria-selected={p === active}
             onClick={() => setSelected(p)}
-            title={p}
+            title={isSourceApp(p) ? `${p} — from the source app, not this component` : p}
           >
             {basename(p)}
             {p === entryPath && <span className={styles.entryDot} title="Entry" />}
+            {isSourceApp(p) && <span className={styles.appTag}>app</span>}
           </button>
         ))}
       </div>
 
       <div className={styles.fileHead}>
         <code className={styles.filePath}>{active}</code>
+        {isSourceApp(active) && (
+          <span className={styles.appNote} title="This file belongs to the source app’s design system">
+            source app
+          </span>
+        )}
         <CopyButton text={code} label="Copy file" />
       </div>
 

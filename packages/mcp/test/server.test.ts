@@ -116,6 +116,47 @@ describe('createMcpServer', () => {
     await close();
   });
 
+  it('documents the token usages + source on get_portable_code (#4)', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const get = tools.find((t) => t.name === 'get_portable_code');
+    const described = String(get?.description ?? '');
+    // A field nobody explains is a field nobody acts on: the rows now carry where
+    // a token is used and are pre-sorted by that, which drives re-theme priority.
+    for (const field of ['source', 'usageCount', 'usages', 'usagesTruncated']) {
+      expect(described).toContain(field);
+    }
+
+    await close();
+  });
+
+  it('documents the scoreBreakdown + hook/context names on list_components (#9)', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const list = tools.find((t) => t.name === 'list_components');
+    const described = String(list?.description ?? '');
+    for (const field of ['scoreBreakdown', 'hooks', 'contextConsumers']) {
+      expect(described).toContain(field);
+    }
+
+    await close();
+  });
+
+  it('documents invalidDesignValues + value bounds on customize_component (#5)', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const customize = tools.find((t) => t.name === 'customize_component');
+    const described = String(customize?.description ?? '');
+    // The docs must say values are bounded, not only that keys are checked.
+    expect(described).toContain('invalidDesignValues');
+    expect(described).toContain('clamped');
+
+    await close();
+  });
+
   it('returns a tool error (not a throw) when no project path is available', async () => {
     const { client, close } = await connect();
 

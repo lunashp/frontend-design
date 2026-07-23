@@ -92,6 +92,21 @@ describe('web design-overrides mirror', () => {
     expect(core.emitDesignStyleSheet(RELATIVE_OVERRIDES)).not.toContain('#root > *:focus-visible');
   });
 
+  it('emits the placeholder root selector on both sides, never `.Name`', () => {
+    // A copyable rule cannot know the component's real root class (CSS-module
+    // hashes, library-generated classes), so both halves must emit the shared
+    // placeholder — a `.Card { … }` rule would silently match nothing.
+    const overrides = { color: '#111', 'hover:color': '#222' };
+    for (const rule of [
+      core.emitDesignRule('Card', overrides),
+      mirror.emitDesignRule('Card', overrides),
+    ]) {
+      expect(rule).toContain('.your-root-class {');
+      expect(rule).toContain('.your-root-class:hover {');
+      expect(rule).not.toContain('.Card {');
+    }
+  });
+
   it('agrees on which keys are real design fields', () => {
     for (const key of [...Object.keys(EVERY_OVERRIDE), 'borderRadius', 'hover:nope', 'nope:color']) {
       expect(mirror.isDesignKey(key)).toBe(core.isDesignKey(key));

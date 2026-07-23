@@ -2,9 +2,11 @@
  * Universal design overrides — customize a component's look even when it
  * exposes no design tokens. `emitDesignCss` produces the `#root > *` `!important`
  * form used by a live preview (the web app injects it into the sandbox iframe);
- * `emitDesignRule` produces a copyable, `!important`-free `.Name { … }` rule for
- * porting. Pure string logic — no framework or DOM dependency — so it is shared
- * by every consumer (web app, MCP).
+ * `emitDesignRule` produces a copyable, `!important`-free rule for porting whose
+ * selector is a PLACEHOLDER — a component's real root class is not knowable from
+ * outside (CSS-module hashes, library-generated classes), so a `.Name { … }` rule
+ * would match nothing. Pure string logic — no framework or DOM dependency — so it
+ * is shared by every consumer (web app, MCP).
  *
  * Interactive states are addressed by prefixing a field id with a state name and
  * a colon — `hover:background`, `focus:borderColor`, `active:scale` — which
@@ -325,14 +327,28 @@ export function emitDesignStyleSheet(
     .join('\n');
 }
 
-/** A copyable, human-readable CSS rule (no !important) targeting the component. */
+/**
+ * The copyable rule's selector is a PLACEHOLDER. A component's real root class
+ * cannot be known from outside — CSS-module names are hashed at build time and
+ * library components (MUI, …) generate their own — so a literal `.Button { … }`
+ * rule would silently match nothing wherever it is pasted. The component name
+ * still labels the comment so the reader knows which component it came from.
+ */
+const ROOT_CLASS_PLACEHOLDER = '.your-root-class';
+
+/** A copyable, human-readable CSS rule (no !important) for the component's root. */
 export function emitDesignRule(name: string, overrides: Readonly<Record<string, string>> = {}): string {
   const blocks = emitDesignBlocks(overrides);
   if (blocks.length === 0) return '';
-  const selector = /^[A-Za-z][\w-]*$/.test(name) ? `.${name}` : '.component';
   const rules = blocks.map((b) => {
     const body = b.declarations.map((decl) => `  ${decl.replace(IMPORTANT, '')};`).join('\n');
-    return `${selector}${b.selectorSuffix} {\n${body}\n}`;
+    return `${ROOT_CLASS_PLACEHOLDER}${b.selectorSuffix} {\n${body}\n}`;
   });
-  return `/* Design overrides for ${name} — apply to the component's root element */\n${rules.join('\n\n')}\n`;
+  return (
+    `/* Design overrides for ${name}. Apply to the component's ROOT element.\n` +
+    `   ${ROOT_CLASS_PLACEHOLDER} is a PLACEHOLDER — the real root class is not\n` +
+    `   knowable from outside (CSS-module hashes, library-generated classes).\n` +
+    `   Replace it with the component's actual root class. */\n` +
+    `${rules.join('\n\n')}\n`
+  );
 }

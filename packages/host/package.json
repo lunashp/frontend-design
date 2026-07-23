@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint --error-on-warnings ."
   },
   "dependencies": {
     "@ce/core": "workspace:*",

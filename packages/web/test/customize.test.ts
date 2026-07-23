@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   emitRootCss,
+  emptyTokensReason,
   getCustomization,
   setCustomization,
   isCustomized,
@@ -156,16 +157,58 @@ describe('emitDesignCss (universal design overrides)', () => {
   });
 });
 
+// A component's real root class is unknowable from outside — CSS-module hashes,
+// library-generated classes — so the copyable `.MyButton { … }` rule the Copy
+// button used to hand out silently matched nothing. The rule now targets a
+// labelled PLACEHOLDER the reader replaces, matching the MCP side.
 describe('emitDesignRule (copyable CSS)', () => {
-  it('emits a named rule without !important', () => {
+  it('targets a placeholder root class with an explaining comment, never `.Name`', () => {
     const rule = emitDesignRule('MyButton', { color: '#111', radius: '8' });
-    expect(rule).toContain('.MyButton {');
+    expect(rule).toContain('.your-root-class {');
+    expect(rule).not.toContain('.MyButton');
+    expect(rule).toContain('PLACEHOLDER');
     expect(rule).toContain('color: #111;');
     expect(rule).toContain('border-radius: 8px;');
     expect(rule).not.toContain('!important');
   });
+  it('keeps hover (and every state) on the placeholder selector', () => {
+    const rule = emitDesignRule('MyButton', { color: '#111', 'hover:color': '#222' });
+    expect(rule).toContain('.your-root-class {\n  color: #111;\n}');
+    expect(rule).toContain('.your-root-class:hover {\n  color: #222;\n}');
+    expect(rule).not.toContain('.MyButton');
+    expect(rule).not.toContain('!important');
+  });
   it('is empty when nothing is set', () => {
     expect(emitDesignRule('X', {})).toBe('');
+  });
+});
+
+// The token panel is hidden when a component exposes no re-themeable tokens; an
+// empty area with no explanation reads as a bug. `emptyTokensReason` derives an
+// honest sentence from the bundle itself — the synthesized /tokens.css is always
+// present, so a *source* stylesheet is any other .css/.scss/… file.
+describe('emptyTokensReason (why the token panel is empty)', () => {
+  it('says CSS-in-JS / inline when the bundle ships no source stylesheet', () => {
+    const reason = emptyTokensReason({ '/Button.tsx': 'x', '/tokens.css': ':root{}' });
+    expect(reason).toMatch(/CSS-in-JS|inline/i);
+    expect(reason).toMatch(/Design/);
+  });
+
+  it('says no custom properties were declared when a source stylesheet exists', () => {
+    const reason = emptyTokensReason({
+      '/Button.tsx': 'x',
+      '/Button.module.css': '.a{}',
+      '/tokens.css': ':root{}',
+    });
+    expect(reason).toMatch(/custom propert/i);
+    expect(reason).not.toMatch(/CSS-in-JS/i);
+    expect(reason).toMatch(/Design/);
+  });
+
+  it('ignores the synthesized /tokens.css when deciding', () => {
+    // /tokens.css is our own output and always present; counting it would call
+    // every CSS-in-JS component "has a stylesheet" and give the wrong reason.
+    expect(emptyTokensReason({ '/tokens.css': ':root{}' })).toMatch(/CSS-in-JS|inline/i);
   });
 });
 

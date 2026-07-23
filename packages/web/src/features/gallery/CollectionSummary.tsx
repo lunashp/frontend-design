@@ -1,4 +1,4 @@
-import type { AtomicLevel, ComponentSummary } from '../../api/types.js';
+import type { ComponentSummary } from '../../api/types.js';
 import { RANKS, RANK_ORDER } from '../../lib/taxonomy.js';
 import styles from './CollectionSummary.module.css';
 
