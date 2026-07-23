@@ -3,6 +3,7 @@ import {
   emitRootCss,
   emptyTokensReason,
   getCustomization,
+  mergeTokenOverrides,
   setCustomization,
   isCustomized,
   sortTokensByUsage,
@@ -89,6 +90,34 @@ describe('customization map (survives tab + card switches)', () => {
     });
     const second = setCustomization(first, 'A', EMPTY_CUSTOMIZATION);
     expect(getCustomization(second, 'A').tokenOverrides).toEqual({});
+  });
+});
+
+// Engine theme presets (tokenModel.themes) are keyed by token id, exactly like
+// tokenOverrides, so seeding a scheme is a merge onto the current overrides.
+describe('mergeTokenOverrides (seed a starting preset)', () => {
+  it('merges the preset onto the current overrides without mutating the state', () => {
+    const before = { ...EMPTY_CUSTOMIZATION, tokenOverrides: { t1: '#000' } };
+    const after = mergeTokenOverrides(before, { t2: '#fff' });
+    expect(after.tokenOverrides).toEqual({ t1: '#000', t2: '#fff' });
+    expect(before.tokenOverrides).toEqual({ t1: '#000' });
+    expect(after).not.toBe(before);
+  });
+
+  it('lets the incoming preset win on a shared token id', () => {
+    const before = { ...EMPTY_CUSTOMIZATION, tokenOverrides: { t1: '#000' } };
+    expect(mergeTokenOverrides(before, { t1: '#fff' }).tokenOverrides).toEqual({ t1: '#fff' });
+  });
+
+  it('preserves design and prop edits alongside the seeded tokens', () => {
+    const before = {
+      ...EMPTY_CUSTOMIZATION,
+      designOverrides: { radius: '8' },
+      propValues: { open: true },
+    };
+    const after = mergeTokenOverrides(before, { t1: '#f00' });
+    expect(after.designOverrides).toEqual({ radius: '8' });
+    expect(after.propValues).toEqual({ open: true });
   });
 });
 

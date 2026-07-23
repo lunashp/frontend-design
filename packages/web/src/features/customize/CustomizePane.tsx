@@ -5,14 +5,21 @@ import {
   emitRootCss,
   emptyTokensReason,
   isCustomized,
+  mergeTokenOverrides,
   EMPTY_CUSTOMIZATION,
   type CustomizationState,
 } from '../../lib/customize.js';
 import { emitDesignRule } from '../../lib/design-overrides.js';
+import type { Preset } from '../../lib/presets.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
 import { DesignControls } from './DesignControls.js';
 import { PropControls } from './PropControls.js';
+import { PresetBar } from './PresetBar.js';
+import { ThemePresets } from './ThemePresets.js';
+import { Foundations } from './Foundations.js';
+import { partitionTokensBySource } from './token-sources.js';
+import { usePresets } from './usePresets.js';
 import styles from './Customize.module.css';
 
 export function CustomizePane({
@@ -42,6 +49,18 @@ export function CustomizePane({
   }, [state.propValues]);
 
   const tokens = artifact.tokenModel.tokens;
+  // Derived tokens are mined from the app's TS theme and are a reference + copy
+  // seed — they cannot live-edit a MUI preview, so they are kept out of the
+  // re-themeable slider panel and shown read-only in Foundations instead. Only
+  // extracted/user tokens (real CSS custom properties) drive the live preview.
+  const { editable: editableTokens, derived: derivedTokens } = useMemo(
+    () => partitionTokensBySource(tokens),
+    [tokens],
+  );
+
+  // Named presets for this (project, component), persisted to localStorage.
+  const presets = usePresets(projectRoot, artifact.descriptor.id);
+
   // Memoized so the preview's design payload keeps a stable identity across
   // re-renders — `?? {}` would otherwise mint a fresh object every time.
   const design = useMemo(() => state.designOverrides ?? {}, [state.designOverrides]);
@@ -78,6 +97,11 @@ export function CustomizePane({
     else next[id] = value;
     onChange({ ...state, designOverrides: next });
   };
+  // Applying a named preset restores its whole snapshot; seeding a theme preset
+  // merges that scheme's values onto the current overrides.
+  const applyPreset = (preset: Preset) => onChange(preset.state);
+  const seedTheme = (overrides: Readonly<Record<string, string>>) =>
+    onChange(mergeTokenOverrides(state, overrides));
 
   return (
     <div className={styles.pane}>
@@ -96,6 +120,16 @@ export function CustomizePane({
         />
       )}
 
+      <PresetBar
+        presets={presets.presets}
+        canSave={dirty}
+        persisted={presets.persisted}
+        onSave={(name) => presets.save(name, state)}
+        onApply={applyPreset}
+        onRename={presets.rename}
+        onDelete={presets.remove}
+      />
+
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <span className="eyebrow">Design</span>
@@ -104,13 +138,13 @@ export function CustomizePane({
         <DesignControls overrides={design} onChange={setDesign} />
       </section>
 
-      {tokens.length > 0 ? (
+      {editableTokens.length > 0 ? (
         <section className={styles.section}>
           <div className={styles.sectionHead}>
             <span className="eyebrow">Design tokens</span>
             <span className={styles.sectionNote}>re-themeable · from the source</span>
           </div>
-          <TokenPanel tokens={tokens} overrides={state.tokenOverrides} onChange={setToken} />
+          <TokenPanel tokens={editableTokens} overrides={state.tokenOverrides} onChange={setToken} />
         </section>
       ) : (
         // Not a net-new empty state — one honest clause so the missing token
@@ -118,6 +152,21 @@ export function CustomizePane({
         // derived from the bundle (does it ship a stylesheet of its own?).
         <p className={styles.emptyTokens}>{emptyTokensReason(artifact.bundle.files)}</p>
       )}
+
+      {/* Starting presets the engine mined from the app's colorSchemes. Absent
+          on plain-CSS targets — the section simply doesn't render. */}
+      {artifact.tokenModel.themes && (
+        <ThemePresets themes={artifact.tokenModel.themes} onSeed={seedTheme} />
+      )}
+
+      {/* The app's real design-system values, mined from its TS theme. Reference
+          + copy seed, not live sliders. Renders only when derived tokens exist. */}
+      <Foundations
+        tokens={derivedTokens}
+        disclosure={artifact.tokenModel.derivedFrom}
+        overrides={state.tokenOverrides}
+        projectRoot={projectRoot}
+      />
 
       <PropControls props={artifact.propModel.props} values={state.propValues} onChange={setProp} />
 

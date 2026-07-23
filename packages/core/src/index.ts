@@ -70,6 +70,11 @@ export {
 } from './tokenize/tokenization-transform.js';
 export { categoryFor } from './tokenize/categorize.js';
 
+// Static theme-object mining: derived tokens + colorScheme presets read from a
+// `createTheme({...})` literal (never executed). `ThemeMiningDisclosure` is
+// exported via the types barrel above.
+export { mineThemeTokens, type ThemeMiningResult } from './theme/theme-extractor.js';
+
 export {
   customizeArtifact,
   customizeSpec,

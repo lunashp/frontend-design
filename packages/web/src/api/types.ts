@@ -193,10 +193,27 @@ export interface Token {
   source: 'extracted' | 'derived' | 'user';
 }
 
+/**
+ * Honest disclosure of a static theme-file mining pass. `derived` tokens come
+ * from reading a `createTheme({...})` object LITERAL (never executing it), so a
+ * value that is a variable ref / spread / call / template cannot be resolved.
+ * Those are counted and their dotted paths listed rather than guessed, so the UI
+ * can say "mined N values, M unresolved" and link the source.
+ */
+export interface ThemeMiningDisclosure {
+  file: string;
+  exportName: string;
+  resolved: number;
+  unresolved: number;
+  unresolvedPaths: string[];
+}
+
 export interface TokenModel {
   tokens: Token[];
   /** Optional named theme presets: theme -> (tokenId -> value). */
   themes?: Record<string, Record<string, string>>;
+  /** Present when derived tokens were mined from a TS theme file. */
+  derivedFrom?: ThemeMiningDisclosure;
 }
 
 export interface ComponentArtifact extends ComponentSummary {

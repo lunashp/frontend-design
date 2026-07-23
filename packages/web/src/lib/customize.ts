@@ -44,6 +44,21 @@ export function setCustomization(
   return new Map(map).set(id, state);
 }
 
+/**
+ * Seed token overrides onto a state — the mechanism behind "starting presets".
+ *
+ * The engine's `tokenModel.themes` presets are keyed by token id, exactly like
+ * `tokenOverrides`, so applying a scheme (e.g. the mined `dark` colorScheme) is
+ * a plain merge: the incoming preset wins on shared ids, and any design/prop
+ * edits already in progress are left untouched. Immutable.
+ */
+export function mergeTokenOverrides(
+  state: CustomizationState,
+  overrides: Readonly<Record<string, string>>,
+): CustomizationState {
+  return { ...state, tokenOverrides: { ...state.tokenOverrides, ...overrides } };
+}
+
 /** Has anything actually been edited? Drives the Reset button's enabled state. */
 export function isCustomized(state: CustomizationState): boolean {
   return (

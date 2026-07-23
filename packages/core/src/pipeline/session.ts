@@ -24,6 +24,8 @@ import { resolvePortability } from '../portability/portability-resolver.js';
 import { resolveMany } from '../portability/resolve-many.js';
 import type { PortableKit } from '../types/portable-kit.js';
 import { tokenizeBundle, TOKENS_CSS_PATH } from '../tokenize/tokenization-transform.js';
+import { mineThemeTokens, type ThemeMiningResult } from '../theme/theme-extractor.js';
+import type { TokenModel } from '../types/token-model.js';
 import { generateSampleProps } from '../sandbox/sample-props.js';
 import { scaffoldSandbox } from '../sandbox/sandbox-scaffolder.js';
 import type { PortableBundle } from '../types/portable-bundle.js';
@@ -65,6 +67,14 @@ export class EngineSession {
    * read afterwards, and a re-scan constructs a new session.
    */
   private kitsByIdSet = new Map<string, PortableKit>();
+
+  /**
+   * Theme mining is theme-level, not component-level: the same `createTheme`
+   * literal yields the same derived tokens for every component. So it runs once
+   * per session and every buildArtifact reuses it. `undefined` = not yet
+   * computed; `null` = computed, nothing to mine (no themeRef or unreadable).
+   */
+  private minedTheme: ThemeMiningResult | null | undefined;
 
   private constructor(
     readonly loaded: LoadedProject,
@@ -189,7 +199,11 @@ export class EngineSession {
       ...rawBundle,
       files: { ...tok.files, [TOKENS_CSS_PATH]: tok.tokensCss },
     };
-    const tokenModel = tok.tokenModel;
+    // Attach statically-mined theme tokens (source:"derived") ALONGSIDE the
+    // extracted CSS tokens — both coexist, distinguished by `source`. The CSS
+    // tokenization (and `tok.files`) is left byte-for-byte unchanged; mining
+    // only appends to the token model, so a plain-CSS target is unaffected.
+    const tokenModel = this.withDerivedTokens(tok.tokenModel);
 
     const sampleProps = generateSampleProps(summary.propModel, summary.descriptor);
     const providers = this.adapter.generateProviderStubs(
@@ -241,6 +255,32 @@ export class EngineSession {
     // `artifactsById` field comment for why the artifact can never go stale.
     this.artifactsById.set(id, artifact);
     return artifact;
+  }
+
+  /**
+   * Mine the target's TS theme once (memoized) so every artifact shares the
+   * result. `null` when no theme was detected or it could not be read/mined.
+   */
+  private themeMining(): ThemeMiningResult | null {
+    if (this.minedTheme !== undefined) return this.minedTheme;
+    const ref = this.loaded.themeRef;
+    this.minedTheme = ref ? mineThemeTokens(ref) : null;
+    return this.minedTheme;
+  }
+
+  /**
+   * Merge derived theme tokens (+ presets + disclosure) into the CSS-extracted
+   * token model. Returns the input unchanged when there is no theme to mine, so
+   * a plain-CSS target keeps exactly its extracted tokens.
+   */
+  private withDerivedTokens(extracted: TokenModel): TokenModel {
+    const mined = this.themeMining();
+    if (!mined) return extracted;
+    return {
+      tokens: [...extracted.tokens, ...mined.tokens],
+      ...(mined.themes ? { themes: mined.themes } : {}),
+      derivedFrom: mined.disclosure,
+    };
   }
 
   /**
