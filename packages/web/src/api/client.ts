@@ -3,6 +3,7 @@
 import type {
   ApiError,
   ComponentArtifact,
+  PortableKit,
   ProgressEvent,
   ProjectPreflight,
   ScanResult,
@@ -57,6 +58,20 @@ export async function getArtifact(path: string, id: string): Promise<ComponentAr
     body: JSON.stringify({ path, id }),
   });
   return parseOrThrow<ComponentArtifact>(res);
+}
+
+/**
+ * Build a portable kit for a SET of components — the multi-component harvest.
+ * POST so the id set travels in the body, mirroring /api/artifact's shape. The
+ * host merges the set into one folder with a single shared token namespace.
+ */
+export async function getKit(path: string, ids: readonly string[]): Promise<PortableKit> {
+  const res = await fetch('/api/kit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, ids }),
+  });
+  return parseOrThrow<PortableKit>(res);
 }
 
 /** Subscribe to scan progress over WS. Returns an unsubscribe fn. */

@@ -32,7 +32,7 @@ import {
   type CustomizationState,
   type DesignBlock,
   type DesignField,
-  type PortableBundle,
+  type PortableKit,
   type PropControl,
   type PropModel,
   type ScanResult,
@@ -318,13 +318,24 @@ export function toUsageSnippet(
 }
 
 /**
+ * The preview-source fields a PortableBundle and a PortableKit share. Typed
+ * structurally (not as PortableBundle) so `sourceAppFiles` serves both the
+ * single-component and the kit payload without duplicating the walk.
+ */
+interface PreviewSource {
+  readonly previewTheme?: { readonly path: string; readonly exportName: string };
+  readonly previewMessages?: string;
+  readonly previewProviders?: readonly { readonly path: string; readonly exportName: string }[];
+}
+
+/**
  * Bundle files that came from the SOURCE app rather than from the component:
  * its theme, its i18n catalogue, its context providers. They sit unmarked in
  * `files` so the preview renders faithfully — copied blind into a destination
  * app, they import the source app's design decisions wholesale, which is exactly
  * the wrong outcome when the instruction was "match OUR theme".
  */
-function sourceAppFiles(b: PortableBundle): string[] {
+function sourceAppFiles(b: PreviewSource): string[] {
   const paths = new Set<string>();
   if (b.previewTheme) paths.add(b.previewTheme.path);
   if (b.previewMessages) paths.add(b.previewMessages);
@@ -384,6 +395,59 @@ export function toPortableCode(a: ComponentArtifact) {
     previewProviders: b.previewProviders ? [...b.previewProviders] : [],
     warnings: [...b.warnings],
     incomplete: b.incomplete === true,
+  };
+}
+
+/**
+ * The copy-ready multi-component kit — the `get_portable_kit` payload. This is
+ * the reason the tool exists: calling get_portable_code N times and merging by
+ * hand corrupts a set, because every single-component bundle restarts its token
+ * counters at `--color-1`, so the same value gets clashing names and a shared
+ * file (a common Button) is duplicated or path-collided. A kit is ONE folder over
+ * a SINGLE token namespace — shared files appear once, shared values share one
+ * token name — so the merge is the engine's, not the agent's.
+ *
+ * The honesty rule still holds: `depConflicts` are SURFACED (a package two
+ * components want at different ranges is recorded, not silently collapsed —
+ * externalDeps still carries one resolved range), and `sourceAppFiles` names the
+ * bundle files that belong to the SOURCE app's theme/i18n/providers, not to any
+ * component, so they are not copied blind into a destination with its own theme.
+ */
+export function toPortableKit(kit: PortableKit) {
+  return {
+    componentCount: kit.components.length,
+    // id + name + entry, in the caller's requested order — the handles a
+    // destination repo needs to wire each component up.
+    components: kit.components.map((c) => ({ id: c.id, name: c.name, entryPath: c.entryPath })),
+    entryPaths: kit.entryPaths,
+    files: kit.files,
+    externalDeps: kit.externalDeps,
+    // Packages required at DIFFERENT ranges across the set. Recorded rather than
+    // hidden so the caller reconciles them; each entry names every requester.
+    depConflicts: kit.depConflicts.map((c) => ({
+      package: c.package,
+      requirements: c.requirements.map((r) => ({ componentId: r.componentId, range: r.range })),
+    })),
+    tokensCssPath: kit.tokensCssPath,
+    tokensCss: kit.tokensCss,
+    // The shared namespace itself, compactly: id/name/value/category/source, no
+    // usages. This is what proves the de-dup (one name per value across the whole
+    // set) and gives an agent the ids to re-theme; usages are dropped to keep the
+    // kit payload — which already carries every merged file — within budget.
+    tokens: kit.tokenModel.tokens.map((t) => ({
+      id: t.id,
+      name: t.name,
+      value: t.value,
+      category: t.category,
+      source: t.source,
+    })),
+    stubbedModules: kit.stubbedModules.map((s) => ({ ...s })),
+    danglingImports: [...kit.danglingImports],
+    warnings: [...kit.warnings],
+    sourceAppFiles: sourceAppFiles(kit),
+    previewTheme: kit.previewTheme,
+    previewMessages: kit.previewMessages,
+    previewProviders: kit.previewProviders ? [...kit.previewProviders] : [],
   };
 }
 

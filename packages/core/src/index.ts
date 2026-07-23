@@ -57,6 +57,7 @@ export {
 // Portability + sandbox (P2)
 export { buildImportGraph, type ImportGraph } from './graph/import-graph.js';
 export { resolvePortability } from './portability/portability-resolver.js';
+export { resolveMany } from './portability/resolve-many.js';
 export { generateSampleProps } from './sandbox/sample-props.js';
 export { scaffoldSandbox, type ScaffoldInput } from './sandbox/sandbox-scaffolder.js';
 

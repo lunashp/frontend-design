@@ -16,6 +16,15 @@ import {
   type CustomizationMap,
   type CustomizationState,
 } from './lib/customize.js';
+import {
+  type Basket,
+  EMPTY_BASKET,
+  removeFromBasket,
+  toggleInBasket,
+} from './features/kit/basket.js';
+import { BasketContext, type BasketControls } from './features/kit/basket-context.js';
+import { KitButton } from './features/kit/KitButton.js';
+import { KitPane } from './features/kit/KitPane.js';
 import styles from './app.module.css';
 
 /** Mirrors the `max-width: 1180px` breakpoint in app.module.css, below which
@@ -47,6 +56,11 @@ export function App() {
   // them. The tab is sticky too — reopening on Customize is the point.
   const [tab, setTab] = useState<Tab>('Details');
   const [customizations, setCustomizations] = useState<CustomizationMap>(() => new Map());
+  // The kit basket: which components to harvest together. Component ids are
+  // project-specific (hashes of file+export), so a new scan target invalidates
+  // them — the basket is cleared when the scanned root changes, below.
+  const [basket, setBasket] = useState<Basket>(EMPTY_BASKET);
+  const [kitOpen, setKitOpen] = useState(false);
   const compact = useMediaQuery(COMPACT_QUERY);
 
   // Auto-scan the host's default project once, for an immediate first view — and
@@ -103,6 +117,25 @@ export function App() {
     [selectedId],
   );
 
+  const toggleBasket = useCallback((id: string) => setBasket((b) => toggleInBasket(b, id)), []);
+  const removeFromKit = useCallback((id: string) => setBasket((b) => removeFromBasket(b, id)), []);
+  const closeKit = useCallback(() => setKitOpen(false), []);
+  // A fresh scan target invalidates every id in the basket, so drop them and shut
+  // the drawer rather than carry ids the new project has never heard of into a
+  // POST /api/kit that would 404.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scannedRoot is the change SIGNAL that must re-run this reset, not a value the body reads.
+  useEffect(() => {
+    setBasket(EMPTY_BASKET);
+    setKitOpen(false);
+  }, [scannedRoot]);
+  // The basket controls the gallery cards read via context — memoized so only a
+  // real basket change re-renders the mounted cards.
+  const basketControls: BasketControls = useMemo(
+    () => ({ has: (id) => basket.has(id), toggle: toggleBasket, count: basket.size }),
+    [basket, toggleBasket],
+  );
+  const basketIds = useMemo(() => [...basket], [basket]);
+
   const inspector = (
     <Inspector
       component={selected}
@@ -117,27 +150,33 @@ export function App() {
   );
 
   return (
-    <div className={styles.shell}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <span className={styles.mark} aria-hidden>
-            ⌘
-          </span>
-          <div className={styles.brandText}>
-            <span className={styles.brandName}>Component Explorer</span>
-            <span className={styles.brandTag}>read-only design harvester</span>
-          </div>
-        </div>
-        {result && (
-          <div className={styles.projectChip} title={result.projectRoot}>
-            <span className={styles.frameworkDot} />
-            <span className={styles.frameworkName}>{result.framework}</span>
-            <span className={styles.projectPath}>
-              {result.projectRoot.split('/').slice(-1)[0]}
+    <BasketContext.Provider value={basketControls}>
+      <div className={styles.shell}>
+        <header className={styles.header}>
+          <div className={styles.brand}>
+            <span className={styles.mark} aria-hidden>
+              ⌘
             </span>
+            <div className={styles.brandText}>
+              <span className={styles.brandName}>Component Explorer</span>
+              <span className={styles.brandTag}>read-only design harvester</span>
+            </div>
           </div>
-        )}
-      </header>
+          {result && (
+            // A small right-aligned group. app.module.css is not owned by this
+            // lane, so the flex grouping is inline rather than a new header class.
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <div className={styles.projectChip} title={result.projectRoot}>
+                <span className={styles.frameworkDot} />
+                <span className={styles.frameworkName}>{result.framework}</span>
+                <span className={styles.projectPath}>
+                  {result.projectRoot.split('/').slice(-1)[0]}
+                </span>
+              </div>
+              <KitButton count={basket.size} onClick={() => setKitOpen(true)} />
+            </div>
+          )}
+        </header>
 
       <aside className={styles.sidebar}>
         <ScanForm controller={scan} />
@@ -225,6 +264,16 @@ export function App() {
       ) : (
         <div className={styles.inspector}>{inspector}</div>
       )}
-    </div>
+
+        {kitOpen && result && (
+          <KitPane
+            projectRoot={result.projectRoot}
+            ids={basketIds}
+            onClose={closeKit}
+            onRemove={removeFromKit}
+          />
+        )}
+      </div>
+    </BasketContext.Provider>
   );
 }

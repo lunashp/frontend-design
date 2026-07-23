@@ -1,8 +1,18 @@
+/* The card is a stretched <button>; the basket toggle is a sibling that floats
+   over it, so both live in this positioned wrapper. It is the grid item now, so
+   it must fill the track height exactly as the card did before (all cards share a
+   fixed content height, which keeps the virtualized row pitch honest). */
+.wrap {
+  position: relative;
+  display: grid;
+}
+
 .card {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  height: 100%;
   padding: var(--space-4) var(--space-4) var(--space-3);
   text-align: left;
   /* Glass-lite: a translucent pane with an edge highlight, NO backdrop-filter.
@@ -55,10 +65,13 @@
   box-shadow: var(--glow-select);
 }
 
+/* Cluster the rank + kind on the LEFT (was space-between) so the top-right
+   corner is free for the basket toggle without the kind label colliding with it. */
 .top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
+  padding-right: var(--space-6);
 }
 
 .kind {
@@ -66,6 +79,48 @@
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   color: var(--text-faint);
+}
+
+/* Basket toggle: a small, quiet affordance in the free corner. Sibling of the
+   card button (never nested), keyboard-focusable, aria-pressed reflects state.
+   Painted after the card in DOM so it sits above and takes the click. */
+.basketToggle {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.basketToggle:hover {
+  transform: scale(1.08);
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+.basketToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.basketToggle[data-picked='true'] {
+  color: var(--accent-ink);
+  border-color: transparent;
+  background: linear-gradient(140deg, var(--rank-atom), var(--accent));
+  box-shadow: var(--shadow-sm);
 }
 
 .identity {

@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../src/server.js';
@@ -7,13 +10,17 @@ import { SessionCache } from '../src/session-cache.js';
 const EXPECTED_TOOLS = [
   'customize_component',
   'get_portable_code',
+  'get_portable_kit',
   'list_components',
   'scan_project',
 ];
 
+/** A real multi-component project (UserPanel → Card → Button) to exercise buildKit end to end. */
+const FIXTURE = path.resolve(import.meta.dirname, '../../core/test/fixtures/simple-react');
+
 /** Connect a client to a fresh in-memory server; the caller closes both. */
-async function connect(cache = new SessionCache()) {
-  const server = createMcpServer({ cache });
+async function connect(cache = new SessionCache(), defaultProject?: string) {
+  const server = createMcpServer({ cache, defaultProject });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: 'test-client', version: '0.0.0' });
@@ -28,13 +35,35 @@ async function connect(cache = new SessionCache()) {
   };
 }
 
+/** Parse the single JSON text block a successful tool call returns. */
+function payload(result: Awaited<ReturnType<Client['callTool']>>): Record<string, unknown> {
+  const content = result.content as { type: string; text: string }[];
+  return JSON.parse(content[0]?.text ?? '{}') as Record<string, unknown>;
+}
+
 describe('createMcpServer', () => {
-  it('registers exactly the four P5 tools', async () => {
+  it('registers exactly the engine tools, including the multi-component kit', async () => {
     const { client, close } = await connect();
 
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(EXPECTED_TOOLS);
+
+    await close();
+  });
+
+  it('describes get_portable_kit as ONE de-duplicated single-namespace set (#kit)', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const kit = tools.find((t) => t.name === 'get_portable_kit');
+    const described = String(kit?.description ?? '');
+    // The whole reason the tool exists: stop calling get_portable_code N times and
+    // hand-merging colliding token names — the description must say so.
+    expect(described).toContain('namespace');
+    expect(described).toContain('depConflicts');
+    const keys = Object.keys((kit?.inputSchema.properties ?? {}) as Record<string, unknown>);
+    expect(keys).toEqual(expect.arrayContaining(['ids']));
 
     await close();
   });
@@ -166,5 +195,84 @@ describe('createMcpServer', () => {
     expect(content[0]?.text).toContain('[MISSING_PATH]');
 
     await close();
+  });
+});
+
+/**
+ * End-to-end over the real engine: scan simple-react, then harvest a SET. One
+ * cache is scanned once (buildKit reuses it), so every case is fast after the
+ * first. The fixture's UserPanel composes Card composes Button, so a two-id kit
+ * exercises the de-dup that hand-merging N single bundles would get wrong.
+ */
+describe('get_portable_kit (integration, simple-react)', () => {
+  const WS = path.join(os.tmpdir(), 'ce-mcp-kit-ws');
+  const cache = new SessionCache(WS);
+  let client: Client;
+  let close: () => Promise<void>;
+  let cardId: string;
+  let userPanelId: string;
+
+  beforeAll(async () => {
+    const conn = await connect(cache, FIXTURE);
+    client = conn.client;
+    close = conn.close;
+    const list = await client.callTool({ name: 'list_components', arguments: {} });
+    const rows = payload(list).components as { id: string; name: string }[];
+    cardId = rows.find((r) => r.name === 'Card')?.id as string;
+    userPanelId = rows.find((r) => r.name === 'UserPanel')?.id as string;
+    expect(cardId).toBeTruthy();
+    expect(userPanelId).toBeTruthy();
+  }, 60_000);
+
+  afterAll(async () => {
+    await close();
+    await fs.rm(WS, { recursive: true, force: true });
+  });
+
+  it('merges two components into one folder with a single shared tokens.css', async () => {
+    const result = await client.callTool({
+      name: 'get_portable_kit',
+      arguments: { ids: [cardId, userPanelId] },
+    });
+    expect(result.isError).toBeFalsy();
+    const kit = payload(result);
+
+    const components = kit.components as { id: string }[];
+    expect(components.map((c) => c.id)).toEqual([cardId, userPanelId]);
+
+    const files = kit.files as Record<string, string>;
+    expect(kit.tokensCssPath).toBe('/tokens.css');
+    expect(files['/tokens.css']).toBe(kit.tokensCss);
+    // Button is reached by BOTH entries; the kit must carry it exactly once.
+    expect(Object.keys(files).filter((k) => /\/Button\/Button\.tsx$/.test(k))).toHaveLength(1);
+
+    const entryPaths = kit.entryPaths as Record<string, string>;
+    expect(files[entryPaths[cardId] as string]).toBeDefined();
+    expect(files[entryPaths[userPanelId] as string]).toBeDefined();
+  });
+
+  it('errors on an empty or non-array ids input at the schema boundary', async () => {
+    // The SDK turns an input-schema violation into an isError tool result (with the
+    // validation message), the same envelope every other failure here uses.
+    const empty = await client.callTool({ name: 'get_portable_kit', arguments: { ids: [] } });
+    expect(empty.isError).toBe(true);
+    expect((empty.content as { text: string }[])[0]?.text).toContain('Invalid arguments');
+
+    const notArray = await client.callTool({
+      name: 'get_portable_kit',
+      arguments: { ids: 'nope' } as never,
+    });
+    expect(notArray.isError).toBe(true);
+    expect((notArray.content as { text: string }[])[0]?.text).toContain('Invalid arguments');
+  });
+
+  it('returns a clean tool error for an unknown id', async () => {
+    const result = await client.callTool({
+      name: 'get_portable_kit',
+      arguments: { ids: ['does#not-exist'] },
+    });
+    expect(result.isError).toBe(true);
+    const content = result.content as { type: string; text: string }[];
+    expect(content[0]?.text).toContain('[COMPONENT_NOT_FOUND]');
   });
 });

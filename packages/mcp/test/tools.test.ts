@@ -5,6 +5,7 @@ import {
   type ComponentArtifact,
   type ComponentSummary,
   type HeuristicWarning,
+  type PortableKit,
   type PropControl,
   type ScanResult,
 } from '@ce/core';
@@ -20,6 +21,7 @@ import {
   toComponentRows,
   toCustomized,
   toPortableCode,
+  toPortableKit,
   toScanSummary,
   toToolError,
   toUsageSnippet,
@@ -710,5 +712,125 @@ describe('toToolError', () => {
   });
   it('falls back to MCP_ERROR for a plain error', () => {
     expect(toToolError(new Error('boom')).content[0]?.text).toContain('[MCP_ERROR]');
+  });
+});
+
+/** A synthetic two-component kit: Card + Button share a file, a token, and a conflicting dep. */
+function kit(overrides: Partial<PortableKit> = {}): PortableKit {
+  return {
+    files: {
+      '/components/Card/Card.tsx': "import { Button } from '../Button/Button';\nexport const Card = () => <Button />;",
+      '/components/Button/Button.tsx': 'export const Button = () => null;',
+      '/tokens.css': ':root {\n  --color-1: #3b82f6;\n}\n',
+    },
+    entryPaths: {
+      card: '/components/Card/Card.tsx',
+      button: '/components/Button/Button.tsx',
+    },
+    components: [
+      { id: 'card', name: 'Card', entryPath: '/components/Card/Card.tsx' },
+      { id: 'button', name: 'Button', entryPath: '/components/Button/Button.tsx' },
+    ],
+    externalDeps: { clsx: '^2.1.1', react: '^19.0.0' },
+    depConflicts: [
+      {
+        package: 'shared-lib',
+        requirements: [
+          { componentId: 'card', range: 'latest' },
+          { componentId: 'button', range: '^3.1.0' },
+        ],
+      },
+    ],
+    tokensCssPath: '/tokens.css',
+    tokensCss: ':root {\n  --color-1: #3b82f6;\n}\n',
+    tokenModel: {
+      tokens: [
+        {
+          id: 't1',
+          name: '--color-1',
+          displayName: 'Color 1',
+          category: 'color',
+          value: '#3b82f6',
+          fallback: '#3b82f6',
+          source: 'extracted',
+          usages: [{ file: '/components/Card/Card.tsx', line: 2, property: 'color', selector: '.a' }],
+        },
+      ],
+    },
+    stubbedModules: [
+      { specifier: 'next/link', replacedWith: '/__stubs/next-link.tsx', lost: 'client-side prefetch' },
+    ],
+    danglingImports: ['/components/Card/Card.tsx → ./missing'],
+    warnings: ['left <DataTable> external'],
+    previewTheme: { path: '/src/theme.ts', exportName: 'theme' },
+    previewMessages: '/src/messages.json',
+    previewProviders: [{ path: '/src/ChatProvider.tsx', exportName: 'ChatProvider' }],
+    ...overrides,
+  };
+}
+
+describe('toPortableKit', () => {
+  it('shapes ONE merged folder over a single token namespace', () => {
+    const p = toPortableKit(kit());
+    // One de-duplicated file map with exactly one /tokens.css that IS tokensCss.
+    expect(p.componentCount).toBe(2);
+    expect(p.components.map((c) => c.id)).toEqual(['card', 'button']);
+    expect(p.components[0]).toEqual({ id: 'card', name: 'Card', entryPath: '/components/Card/Card.tsx' });
+    expect(p.entryPaths).toEqual({
+      card: '/components/Card/Card.tsx',
+      button: '/components/Button/Button.tsx',
+    });
+    expect(p.tokensCssPath).toBe('/tokens.css');
+    expect(p.files['/tokens.css']).toBe(p.tokensCss);
+    // The Button file the two components share appears exactly once.
+    expect(Object.keys(p.files).filter((k) => /\/Button\/Button\.tsx$/.test(k))).toHaveLength(1);
+  });
+
+  it('merges external deps and SURFACES conflicting ranges rather than hiding them', () => {
+    const p = toPortableKit(kit());
+    expect(p.externalDeps).toEqual({ clsx: '^2.1.1', react: '^19.0.0' });
+    expect(p.depConflicts).toEqual([
+      {
+        package: 'shared-lib',
+        requirements: [
+          { componentId: 'card', range: 'latest' },
+          { componentId: 'button', range: '^3.1.0' },
+        ],
+      },
+    ]);
+  });
+
+  it('exposes the shared token namespace compactly (no per-token usages on the wire)', () => {
+    const p = toPortableKit(kit());
+    expect(p.tokens).toEqual([
+      { id: 't1', name: '--color-1', value: '#3b82f6', category: 'color', source: 'extracted' },
+    ]);
+    // usages are deliberately dropped here — the kit payload stays compact.
+    expect(JSON.stringify(p.tokens)).not.toContain('usages');
+  });
+
+  it('discloses stubbed modules, dangling imports and warnings across the set', () => {
+    const p = toPortableKit(kit());
+    expect(p.stubbedModules).toEqual([
+      { specifier: 'next/link', replacedWith: '/__stubs/next-link.tsx', lost: 'client-side prefetch' },
+    ]);
+    expect(p.danglingImports).toEqual(['/components/Card/Card.tsx → ./missing']);
+    expect(p.warnings).toEqual(['left <DataTable> external']);
+  });
+
+  it("marks the SOURCE app's theme / i18n / providers as not-the-component", () => {
+    const p = toPortableKit(kit());
+    expect(p.sourceAppFiles).toEqual(['/src/theme.ts', '/src/messages.json', '/src/ChatProvider.tsx']);
+    expect(p.previewTheme).toEqual({ path: '/src/theme.ts', exportName: 'theme' });
+    expect(p.previewMessages).toBe('/src/messages.json');
+    expect(p.previewProviders).toEqual([{ path: '/src/ChatProvider.tsx', exportName: 'ChatProvider' }]);
+  });
+
+  it('reports an empty providers list rather than undefined when none are bundled', () => {
+    const p = toPortableKit(
+      kit({ previewTheme: undefined, previewMessages: undefined, previewProviders: undefined }),
+    );
+    expect(p.sourceAppFiles).toEqual([]);
+    expect(p.previewProviders).toEqual([]);
   });
 });

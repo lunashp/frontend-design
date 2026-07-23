@@ -184,6 +184,105 @@ describe('host preflight route', () => {
   });
 });
 
+describe('host kit route', () => {
+  /** Scan the fixture over HTTP and map component name → descriptor id. */
+  async function scanIds(base: string): Promise<Map<string, string>> {
+    const res = await fetch(`${base}/api/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: REACT_FIXTURE }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      components: { descriptor: { id: string; name: string } }[];
+    };
+    return new Map(body.components.map((c) => [c.descriptor.name, c.descriptor.id]));
+  }
+
+  it('builds a portable kit for a set of ids with one shared token sheet', async () => {
+    const { base } = await start();
+    const byName = await scanIds(base);
+    // Card composes Button; UserPanel composes Card — so Button.tsx is reached by
+    // both entries and must appear once. A valid two-id kit is the core case.
+    const ids = [byName.get('Card'), byName.get('UserPanel')].filter(
+      (id): id is string => typeof id === 'string',
+    );
+    expect(ids).toHaveLength(2);
+
+    const res = await fetch(`${base}/api/kit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: REACT_FIXTURE, ids }),
+    });
+    expect(res.status).toBe(200);
+    const kit = (await res.json()) as {
+      files: Record<string, string>;
+      tokensCss: string;
+      tokensCssPath: string;
+      components: { id: string }[];
+    };
+    // The merged bundle carries exactly one shared :root sheet at a stable path.
+    expect(kit.tokensCssPath).toBe('/tokens.css');
+    expect(typeof kit.tokensCss).toBe('string');
+    expect(kit.files['/tokens.css']).toBe(kit.tokensCss);
+    // Button.tsx, shared by both entries, is present once (deduped merge).
+    const buttonFiles = Object.keys(kit.files).filter((k) => /\/Button\/Button\.tsx$/.test(k));
+    expect(buttonFiles).toHaveLength(1);
+    expect(kit.components.map((c) => c.id).sort()).toEqual([...ids].sort());
+  });
+
+  it('reuses a project already scanned by a prior request', async () => {
+    const { base } = await start();
+    const byName = await scanIds(base);
+    const ids = [byName.get('Button')].filter((id): id is string => typeof id === 'string');
+    const res = await fetch(`${base}/api/kit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: REACT_FIXTURE, ids }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { components: unknown[] }).toMatchObject({
+      components: [{ id: ids[0] }],
+    });
+  });
+
+  it('400s when ids is missing, not an array, empty, or not all strings', async () => {
+    const { base } = await start();
+    for (const bad of [{}, { ids: 'nope' }, { ids: [] }, { ids: [123] }]) {
+      const res = await fetch(`${base}/api/kit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: REACT_FIXTURE, ...bad }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: { code: 'INVALID_IDS' } });
+    }
+  });
+
+  it('400s when no path and no default project', async () => {
+    const { base } = await start();
+    const res = await fetch(`${base}/api/kit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ['x#Y'] }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: 'MISSING_PATH' } });
+  });
+
+  it('maps an unknown component id to a 4xx, not a 500', async () => {
+    const { base } = await start();
+    const res = await fetch(`${base}/api/kit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: REACT_FIXTURE, ids: ['no/such/file.tsx#Nope'] }),
+    });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    expect(await res.json()).toMatchObject({ error: { code: 'COMPONENT_NOT_FOUND' } });
+  });
+});
+
 describe('host static gallery', () => {
   it('serves the built gallery at the root', async () => {
     const { base } = await start();

@@ -18,11 +18,24 @@
 
 import type { PortableBundle } from '../api/types.js';
 
-export function sourceAppFiles(bundle: PortableBundle): Set<string> {
+/**
+ * The preview-origin fields common to a single-component bundle AND a
+ * multi-component kit: the app's theme, i18n catalogue, and providers. Declaring
+ * the derivation over this structural shape (rather than `PortableBundle`) lets
+ * the kit view reuse it verbatim — `PortableBundle` and `PortableKit` both
+ * satisfy it — without the web app importing the engine or duplicating the logic.
+ */
+export interface SourceAppOrigin {
+  previewTheme?: { path: string; exportName: string };
+  previewMessages?: string;
+  previewProviders?: { path: string; exportName: string }[];
+}
+
+export function sourceAppFiles(source: SourceAppOrigin): Set<string> {
   const paths = new Set<string>();
-  if (bundle.previewTheme) paths.add(bundle.previewTheme.path);
-  if (bundle.previewMessages) paths.add(bundle.previewMessages);
-  for (const p of bundle.previewProviders ?? []) paths.add(p.path);
+  if (source.previewTheme) paths.add(source.previewTheme.path);
+  if (source.previewMessages) paths.add(source.previewMessages);
+  for (const p of source.previewProviders ?? []) paths.add(p.path);
   return paths;
 }
 

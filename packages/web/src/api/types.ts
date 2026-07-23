@@ -206,6 +206,50 @@ export interface ComponentArtifact extends ComponentSummary {
   sandpack: SandpackSpec;
 }
 
+/**
+ * Multi-component kit DTOs (POST /api/kit) — the wire mirror of @ce/core's
+ * `PortableKit` (packages/core/src/types/portable-kit.ts).
+ *
+ * That engine module is deliberately NOT one of the modules the mirror-sync test
+ * (`packages/core/test/types/mirror-sync.test.ts`) guards, so this side is
+ * composed by hand from the already-mirrored `Record<string,string>` /
+ * `StubbedModule` / `TokenModel` plus the kit-only `KitComponent` / `DepConflict`
+ * / `DepRequirement` declared here. Extra interfaces are allowed in the mirror, so
+ * adding these keeps that test green.
+ */
+export interface KitComponent {
+  id: string;
+  name: string;
+  entryPath: string;
+}
+
+export interface DepRequirement {
+  componentId: string;
+  range: string;
+}
+
+export interface DepConflict {
+  package: string;
+  requirements: DepRequirement[];
+}
+
+export interface PortableKit {
+  files: Record<string, string>;
+  entryPaths: Record<string, string>;
+  components: KitComponent[];
+  externalDeps: Record<string, string>;
+  depConflicts: DepConflict[];
+  tokensCssPath: string;
+  tokensCss: string;
+  tokenModel: TokenModel;
+  stubbedModules: StubbedModule[];
+  danglingImports: string[];
+  warnings: string[];
+  previewTheme?: { path: string; exportName: string };
+  previewMessages?: string;
+  previewProviders?: { path: string; exportName: string }[];
+}
+
 export interface ProgressEvent {
   phase: string;
   message: string;

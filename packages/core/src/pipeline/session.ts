@@ -21,6 +21,8 @@ import { loadProject } from '../project/load-project.js';
 import { classify } from '../classify/classifier.js';
 import { detectDegenerateHeuristics } from '../classify/heuristic-health.js';
 import { resolvePortability } from '../portability/portability-resolver.js';
+import { resolveMany } from '../portability/resolve-many.js';
+import type { PortableKit } from '../types/portable-kit.js';
 import { tokenizeBundle, TOKENS_CSS_PATH } from '../tokenize/tokenization-transform.js';
 import { generateSampleProps } from '../sandbox/sample-props.js';
 import { scaffoldSandbox } from '../sandbox/sandbox-scaffolder.js';
@@ -54,6 +56,15 @@ export class EngineSession {
    * a wasted rebuild on every one of those hits.
    */
   private artifactsById = new Map<string, ComponentArtifact>();
+
+  /**
+   * Per-id-set kit memo, keyed by the SORTED, deduped ids so `[a,b]` and `[b,a]`
+   * hit the same slot (a kit is a set, not a sequence — its `components` list
+   * still follows the caller's order). Safe for the session lifetime for the same
+   * reason as `artifactsById`: a PortableKit is built from fresh objects and only
+   * read afterwards, and a re-scan constructs a new session.
+   */
+  private kitsByIdSet = new Map<string, PortableKit>();
 
   private constructor(
     readonly loaded: LoadedProject,
@@ -230,5 +241,41 @@ export class EngineSession {
     // `artifactsById` field comment for why the artifact can never go stale.
     this.artifactsById.set(id, artifact);
     return artifact;
+  }
+
+  /**
+   * Build a PortableKit for a SET of scanned components (the harvest endpoint):
+   * one shared token namespace, shared files deduped, deps merged with conflicts
+   * recorded. `scan()` must have run first. Reuses the cached descriptors, so no
+   * re-scan; memoized by the id-set.
+   */
+  buildKit(ids: readonly string[]): PortableKit {
+    // Validate every id up front so an unknown one is a clear error, not a later
+    // crash deep in the graph walk. Ordered `components` follows the caller's
+    // (deduped) order; the memo key is the sorted set so order never re-resolves.
+    const seen = new Set<string>();
+    const orderedIds: string[] = [];
+    const descriptors: ComponentDescriptor[] = [];
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const summary = this.summariesById.get(id);
+      if (!summary) throw new ComponentNotFoundError(id);
+      orderedIds.push(id);
+      descriptors.push(summary.descriptor);
+    }
+
+    const key = [...orderedIds].sort().join(' ');
+    const memoized = this.kitsByIdSet.get(key);
+    if (memoized) return memoized;
+
+    const tsProject = (this.program.handle as { tsProject?: Project }).tsProject;
+    if (!tsProject) {
+      throw new EngineError('Adapter does not expose a ts-morph project', 'NO_TS_PROJECT');
+    }
+
+    const kit = resolveMany(tsProject, descriptors, this.loaded);
+    this.kitsByIdSet.set(key, kit);
+    return kit;
   }
 }

@@ -197,6 +197,42 @@ export function createHost(options: HostOptions): Host {
       }
     }
 
+    // The multi-component harvest endpoint: merge a SET of components into one
+    // kit (shared token namespace, deduped files, merged deps). POST so the id
+    // set travels in the body. Read-only — same engine, same session cache.
+    if (route === 'POST /api/kit') {
+      const body = await readJsonBody<{ path?: string; ids?: unknown }>(req);
+      const projectPath = body.path ?? options.defaultProject;
+      if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
+      const rawIds = body.ids;
+      // Assembling a kit from an empty or non-string set can't be honoured, and a
+      // non-array would crash deeper in the graph walk — reject at the boundary.
+      if (
+        !Array.isArray(rawIds) ||
+        rawIds.length === 0 ||
+        rawIds.some((id) => typeof id !== 'string')
+      ) {
+        return sendError(res, 400, '"ids" must be a non-empty string array', 'INVALID_IDS');
+      }
+      const ids = rawIds as string[];
+      const logger = createLogger({ onProgress: broadcast });
+      try {
+        // Ensure the project is scanned and its session cached, then build the kit
+        // off that session. Mirrors getArtifact's scan-then-session-call; the store
+        // has no buildKit method, so the route reaches the session via get().
+        await store.scan(projectPath, logger);
+        const session = store.get(projectPath);
+        if (!session) return sendError(res, 422, 'Session unavailable after scan', 'KIT_FAILED');
+        return sendJson(res, 200, session.buildKit(ids));
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        const message = err instanceof Error ? err.message : 'Kit build failed';
+        // An unknown id is the caller's mistake, not a server fault: 4xx, not 500.
+        if (code === 'COMPONENT_NOT_FOUND') return sendError(res, 404, message, code);
+        return sendError(res, 422, message, code ?? 'KIT_FAILED');
+      }
+    }
+
     // Self-contained preview: bundle the component locally (no external CDN) and
     // serve an HTML doc the web app iframes. GET so an <iframe src> can load it.
     if (req.method === 'GET' && url.pathname === '/api/preview') {

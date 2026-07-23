@@ -23,6 +23,7 @@ import {
   toComponentList,
   toCustomized,
   toPortableCode,
+  toPortableKit,
   toScanSummary,
   toToolError,
 } from './tools.js';
@@ -60,6 +61,8 @@ CALL ORDER
    supply a progress token and reset your timeout on progress.
 2. list_components — filter down to candidates. Each row's \`id\` is the handle for the next two.
 3. get_portable_code — one component's copy-ready bundle, prop contract, and usage snippet.
+   For a SET of components, use get_portable_kit instead of calling this N times: it returns ONE
+   merged folder over a SINGLE token namespace, so shared files and shared token names don't collide.
 4. customize_component — re-theme tokens, set props, apply design overrides.
 
 RENDERABILITY (on get_portable_code) is the engine's verdict on whether the component can render in
@@ -234,6 +237,32 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
           callLogger(extra),
         );
         return ok(toPortableCode(artifact));
+      } catch (err) {
+        return toToolError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'get_portable_kit',
+    {
+      title: 'Get portable kit',
+      description:
+        "Extract a SET of components as ONE copy-ready kit — the multi-component sibling of get_portable_code. Use this instead of calling get_portable_code N times and merging by hand: each single-component bundle restarts its token counters at `--color-1`, so hand-assembling a set COLLIDES token names and duplicates shared files. A kit resolves the whole set as one graph — one merged `files` map (imports rewritten, a file shared by two components appears once), one shared `/tokens.css` token namespace (a value common to two components gets ONE name), and merged `externalDeps`. Returns { componentCount, components[] ({ id, name, entryPath } in request order), entryPaths, files, externalDeps, depConflicts, tokensCssPath, tokensCss, tokens[] ({ id, name, value, category, source }), stubbedModules, danglingImports, warnings, sourceAppFiles, previewTheme/Messages/Providers }. Honest by construction: `depConflicts` SURFACES any package two components require at different ranges (externalDeps still picks one) rather than hiding the mismatch, and `sourceAppFiles` names the bundle files that belong to the SOURCE app's theme / i18n / providers — do not copy those into a destination that has its own theme.",
+      inputSchema: {
+        projectPath: z.string().optional().describe('Target project root; falls back to launch default'),
+        ids: z
+          .array(z.string())
+          .min(1)
+          .describe(
+            'Component ids (from list_components) to harvest together as one kit — 2+ is the point, though 1 is allowed. An unknown id fails the whole call rather than silently dropping a component from the set.',
+          ),
+      },
+    },
+    async (args, extra) => {
+      try {
+        const kit = await cache.getKit(resolveProject(args.projectPath), args.ids, callLogger(extra));
+        return ok(toPortableKit(kit));
       } catch (err) {
         return toToolError(err);
       }
