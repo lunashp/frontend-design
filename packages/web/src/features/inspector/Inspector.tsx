@@ -12,6 +12,7 @@ import { PreviewPane } from '../preview/PreviewPane.js';
 import { PortablePane } from '../portable/PortablePane.js';
 import { CustomizePane } from '../customize/CustomizePane.js';
 import { PropTable } from './PropTable.js';
+import { AccessibilitySection } from './AccessibilitySection.js';
 import styles from './Inspector.module.css';
 
 export const TABS = ['Details', 'Preview', 'Portable', 'Customize'] as const;
@@ -160,6 +161,11 @@ function DetailsBody({
         </h3>
         <PropTable props={propModel.props} />
       </section>
+
+      {/* Advisory a11y read on the rendered preview, fetched lazily only now that
+          a component is open — never per gallery card (the audit is heavier than
+          a thumbnail). */}
+      <AccessibilitySection projectRoot={projectRoot} id={descriptor.id} />
     </>
   );
 }

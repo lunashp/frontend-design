@@ -57,6 +57,23 @@ export function sendHtml(res: ServerResponse, status: number, html: string): voi
 }
 
 /**
+ * Send JSON with a content-addressed ETag so a re-request for the same result
+ * revalidates cheaply (a 304 body-less reply) while a re-scan that changes the
+ * ETag fetches fresh. `no-cache` forces that revalidation rather than letting a
+ * browser serve a stale body across a re-scan at the same URL. Used by the a11y
+ * audit route, whose body is the JSON sibling of a thumbnail PNG.
+ */
+export function sendJsonEtag(res: ServerResponse, status: number, body: unknown, etag: string): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    ETag: etag,
+    'Cache-Control': 'no-cache',
+  });
+  res.end(payload);
+}
+
+/**
  * Send a PNG with a content-addressed ETag so a re-request for the same pixels
  * revalidates cheaply (a 304 body-less reply) while a re-scan that changes the
  * ETag fetches fresh. `no-cache` forces that revalidation rather than letting a

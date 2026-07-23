@@ -323,3 +323,54 @@ export interface ProjectPreflight {
 export interface ApiError {
   error: { message: string; code: string };
 }
+
+/**
+ * Accessibility-audit DTOs — the wire shape of GET /api/a11y. A transport concern
+ * the engine has no opinion about (the audit runs in the host's browser, not the
+ * engine), so these are mirror EXTRAS, not engine-mirrored types.
+ */
+export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
+
+export interface A11yFinding {
+  ruleId: string;
+  impact: A11yImpact;
+  help: string;
+  helpUrl: string;
+  /** Total DOM nodes the rule flagged (may exceed targets.length). */
+  nodeCount: number;
+  /** A bounded sample of the affected element selectors. */
+  targets: string[];
+}
+
+export interface A11ySummary {
+  critical: number;
+  serious: number;
+  moderate: number;
+  minor: number;
+}
+
+/** A completed audit — the available:true branch. */
+export interface A11yReport {
+  available: true;
+  renderability: Renderability;
+  /** True when app context was faked — some ARIA/role findings may be stub artifacts. */
+  stubbedContext: boolean;
+  summary: A11ySummary;
+  /** Violations found before truncation. */
+  total: number;
+  findings: A11yFinding[];
+  truncated: boolean;
+  /** The advisory / stubbed-context caveat, carried on the wire. */
+  disclosure: string;
+}
+
+/** code-only: nothing renders to audit. unavailable: browser absent / render or axe timed out. */
+export type A11yUnavailableReason = 'code-only' | 'unavailable';
+
+export interface A11yUnavailable {
+  available: false;
+  reason: A11yUnavailableReason;
+  disclosure: string;
+}
+
+export type A11yResponse = A11yReport | A11yUnavailable;

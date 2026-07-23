@@ -1,0 +1,232 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Matches the Details tab's other section titles (mono, uppercase), with an
+   eyebrow that names the engine and its stance so nobody reads the findings as a
+   verdict — this is axe, and it is advisory. */
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.eyebrow {
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--text-faint);
+}
+
+.muted {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.error {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--danger);
+}
+
+/* Severity summary: a worst-first row of count pills. The count leads at display
+   scale so the shape of the problem reads before any word does. */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px 4px 6px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.chipCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--surface);
+}
+.chip[data-tone='danger'] {
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 12%, transparent);
+  border-color: color-mix(in oklch, var(--danger) 32%, transparent);
+}
+.chip[data-tone='danger'] .chipCount {
+  background: var(--danger);
+}
+.chip[data-tone='warn'] {
+  color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  border-color: color-mix(in oklch, var(--warn) 34%, transparent);
+}
+.chip[data-tone='warn'] .chipCount {
+  background: var(--warn);
+}
+.chip[data-tone='note'] {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+}
+.chip[data-tone='note'] .chipCount {
+  background: var(--accent);
+}
+
+/* Findings. Each is a card carrying a coloured severity rule down its edge, so
+   the eye can triage the whole list by the left margin alone before reading. */
+.findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--radius-card);
+}
+.finding[data-impact='critical'],
+.finding[data-impact='serious'] {
+  border-left-color: var(--danger);
+}
+.finding[data-impact='moderate'] {
+  border-left-color: var(--warn);
+}
+.finding[data-impact='minor'] {
+  border-left-color: var(--accent);
+}
+
+.findingHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.impact {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-chip);
+  color: var(--surface);
+}
+.impact[data-impact='critical'],
+.impact[data-impact='serious'] {
+  background: var(--danger);
+}
+.impact[data-impact='moderate'] {
+  background: var(--warn);
+}
+.impact[data-impact='minor'] {
+  background: var(--accent);
+}
+.ruleId {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+.nodeCount {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.help {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text);
+}
+.targets {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  word-break: break-word;
+}
+.learn {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur) var(--ease);
+}
+.learn:hover,
+.learn:focus-visible {
+  border-bottom-color: var(--accent);
+}
+
+/* Clean pass. Calm, and deliberately scoped to "the rendered preview" so it never
+   overclaims that the source itself is perfect. */
+.clean {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: color-mix(in oklch, var(--ok) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ok) 26%, transparent);
+  border-radius: var(--radius-card);
+}
+.cleanMark {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: var(--radius-pill);
+  background: radial-gradient(circle at 50% 42%, var(--ok), transparent 72%);
+}
+.cleanTitle {
+  font-size: var(--text-sm);
+  color: var(--text);
+  margin-bottom: var(--space-1);
+}
+
+.unavailable {
+  padding: var(--space-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-card);
+}
+.unavailableLabel {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: var(--space-2);
+}
+
+/* The disclosure is UI, not fine print: the whole feature's honesty lives here.
+   A stubbed render tints it so the caveat cannot be skimmed past. */
+.disclosure {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+}
+.disclosure[data-stubbed='true'] {
+  color: var(--warn);
+  border-left-color: color-mix(in oklch, var(--warn) 40%, transparent);
+}

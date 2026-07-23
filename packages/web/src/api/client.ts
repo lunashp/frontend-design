@@ -1,6 +1,7 @@
 /** Thin client for the @ce/host HTTP + WS API. */
 
 import type {
+  A11yResponse,
   ApiError,
   ComponentArtifact,
   PortableKit,
@@ -72,6 +73,17 @@ export async function getKit(path: string, ids: readonly string[]): Promise<Port
     body: JSON.stringify({ path, ids }),
   });
   return parseOrThrow<PortableKit>(res);
+}
+
+/**
+ * Fetch the advisory accessibility audit for one component. Returns 200 for BOTH
+ * a completed audit and a definitive "unavailable" (available:false) — only a
+ * missing path/id (400) or an unknown component (404) throws. GET so it is cheap
+ * to fetch lazily when a component is opened in the inspector.
+ */
+export async function getA11y(path: string, id: string): Promise<A11yResponse> {
+  const params = new URLSearchParams({ path, id });
+  return parseOrThrow<A11yResponse>(await fetch(`/api/a11y?${params.toString()}`));
 }
 
 /** Subscribe to scan progress over WS. Returns an unsubscribe fn. */

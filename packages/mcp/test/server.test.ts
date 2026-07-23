@@ -4,11 +4,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createMcpServer } from '../src/server.js';
+import { createMcpServer, type McpServerOptions } from '../src/server.js';
 import { SessionCache } from '../src/session-cache.js';
+import type { A11yAuditor } from '../src/a11y.js';
 
 const EXPECTED_TOOLS = [
   'customize_component',
+  'get_accessibility',
   'get_portable_code',
   'get_portable_kit',
   'list_components',
@@ -19,8 +21,12 @@ const EXPECTED_TOOLS = [
 const FIXTURE = path.resolve(import.meta.dirname, '../../core/test/fixtures/simple-react');
 
 /** Connect a client to a fresh in-memory server; the caller closes both. */
-async function connect(cache = new SessionCache(), defaultProject?: string) {
-  const server = createMcpServer({ cache, defaultProject });
+async function connect(
+  cache = new SessionCache(),
+  defaultProject?: string,
+  extra: Omit<McpServerOptions, 'cache' | 'defaultProject'> = {},
+) {
+  const server = createMcpServer({ cache, defaultProject, ...extra });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: 'test-client', version: '0.0.0' });
@@ -204,6 +210,27 @@ describe('createMcpServer', () => {
     await close();
   });
 
+  it('frames get_accessibility as advisory, from the render, with the stubbed caveat and no-backend honesty', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const a11y = tools.find((t) => t.name === 'get_accessibility');
+    const described = String(a11y?.description ?? '');
+    // Advisory, not a gate; from the RENDER, not a source scan.
+    expect(described.toLowerCase()).toContain('advisory');
+    expect(described.toLowerCase()).toContain('render');
+    // The stubbed-context caveat and the no-backend honesty must travel with the tool.
+    expect(described).toContain('stubbedContext');
+    expect(described).toContain('no-render-backend');
+
+    // And the instructions must tell every client the audit is advisory + where it runs.
+    const instructions = client.getInstructions() ?? '';
+    expect(instructions).toContain('get_accessibility');
+    expect(instructions).toContain('no-render-backend');
+
+    await close();
+  });
+
   it('returns a tool error (not a throw) when no project path is available', async () => {
     const { client, close } = await connect();
 
@@ -292,5 +319,62 @@ describe('get_portable_kit (integration, simple-react)', () => {
     expect(result.isError).toBe(true);
     const content = result.content as { type: string; text: string }[];
     expect(content[0]?.text).toContain('[COMPONENT_NOT_FOUND]');
+  });
+
+  it('get_accessibility degrades to no-render-backend by default (no browser in this package)', async () => {
+    const result = await client.callTool({
+      name: 'get_accessibility',
+      arguments: { componentId: cardId },
+    });
+    expect(result.isError).toBeFalsy();
+    const body = payload(result);
+    // The component identity still comes back; the audit itself is unavailable, honestly.
+    expect(body.id).toBe(cardId);
+    expect(body.available).toBe(false);
+    expect(body.reason).toBe('no-render-backend');
+    expect(String(body.disclosure).toLowerCase()).toContain('host');
+  });
+
+  it('get_accessibility returns the injected auditor report, folded with the component identity', async () => {
+    // A deployment that owns a render backend injects the real auditor; here a fake
+    // one stands in to prove the tool surfaces its report compactly, with the caveat.
+    const auditor: A11yAuditor = async () => ({
+      available: true,
+      renderability: 'stubbed',
+      stubbedContext: true,
+      summary: { critical: 1, serious: 0, moderate: 0, minor: 0 },
+      total: 1,
+      findings: [
+        {
+          ruleId: 'button-name',
+          impact: 'critical',
+          help: 'Buttons must have discernible text',
+          helpUrl: 'https://example.test/button-name',
+          nodeCount: 1,
+          targets: ['button'],
+        },
+      ],
+      truncated: false,
+      disclosure: 'Advisory — from the rendered preview; stubbed context may add or mask issues.',
+    });
+    const conn = await connect(cache, FIXTURE, { auditA11y: auditor });
+    try {
+      const result = await conn.client.callTool({
+        name: 'get_accessibility',
+        arguments: { componentId: cardId },
+      });
+      expect(result.isError).toBeFalsy();
+      const content = result.content as { type: string; text: string }[];
+      const body = JSON.parse(content[0]?.text ?? '{}') as Record<string, unknown>;
+      expect(body.id).toBe(cardId);
+      expect(body.available).toBe(true);
+      expect(body.stubbedContext).toBe(true);
+      const summary = body.summary as { critical: number };
+      expect(summary.critical).toBe(1);
+      const findings = body.findings as Array<{ ruleId: string }>;
+      expect(findings[0]?.ruleId).toBe('button-name');
+    } finally {
+      await conn.close();
+    }
   });
 });

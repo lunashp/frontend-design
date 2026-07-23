@@ -12,6 +12,7 @@ import { createLogger, preflightProject, type ProgressEvent } from '@ce/core';
 import {
   applyCors,
   sendJson,
+  sendJsonEtag,
   sendError,
   sendHtml,
   sendPng,
@@ -24,6 +25,16 @@ import { renderPreviewHtml } from './bundle-preview.js';
 import { clampThumbnailWidth, shouldRenderThumbnail, thumbnailCacheKey } from './thumbnail.js';
 import { readCachedThumbnail, writeCachedThumbnail } from './thumbnail-cache.js';
 import { renderThumbnail as defaultThumbnailRenderer, type ThumbnailRenderer } from './thumbnail-renderer.js';
+import {
+  a11yCacheKey,
+  shouldAuditA11y,
+  summarizeAxe,
+  unavailableDisclosure,
+  type A11yUnavailable,
+  type A11yUnavailableReason,
+} from './a11y.js';
+import { readCachedAudit, writeCachedAudit } from './a11y-cache.js';
+import { auditA11y as defaultA11yAuditor, type A11yAuditor } from './a11y-audit.js';
 
 /**
  * Loopback only. This process reads arbitrary local source, so binding every
@@ -54,6 +65,12 @@ export interface HostOptions {
    * end-to-end without launching a browser.
    */
   readonly renderThumbnail?: ThumbnailRenderer;
+  /**
+   * How a component is audited for accessibility (axe against the rendered
+   * preview). Defaults to the real auditor over the shared browser; injected in
+   * tests so the /api/a11y contract can be exercised without a browser.
+   */
+  readonly auditA11y?: A11yAuditor;
 }
 
 export interface Host {
@@ -122,6 +139,7 @@ export function createHost(options: HostOptions): Host {
   const clients = new Set<WebSocket>();
   const webRoot = options.webRoot ?? DEFAULT_WEB_ROOT;
   const renderThumbnail = options.renderThumbnail ?? defaultThumbnailRenderer;
+  const auditA11y = options.auditA11y ?? defaultA11yAuditor;
 
   const broadcast = (event: ProgressEvent): void => {
     const msg = JSON.stringify({ type: 'progress', ...event });
@@ -381,6 +399,85 @@ export function createHost(options: HostOptions): Host {
           return sendError(res, 404, err instanceof Error ? err.message : 'Unknown component', 'COMPONENT_NOT_FOUND');
         }
         return noThumbnail('error');
+      }
+    }
+
+    // Advisory accessibility audit: axe-core run against the component's rendered
+    // preview (the SAME render the thumbnail uses, over the SAME shared browser).
+    // GET so the inspector can fetch it lazily when a component is opened.
+    //
+    // Contract:
+    //   200 application/json { available:true, summary, findings, disclosure, … }
+    //                         (+ ETag) — the audit; findings are advisory, bounded,
+    //                         and disclose stubbed context.
+    //   200 application/json { available:false, reason, disclosure }
+    //                         — code-only (no isolated render) or unavailable
+    //                         (browser absent / render or axe timed out). Definitive,
+    //                         never a 500 or a hang.
+    //   304                   — If-None-Match matched; audit unchanged.
+    //   400                   — missing path/id.
+    //   404                   — unknown component id.
+    if (req.method === 'GET' && url.pathname === '/api/a11y') {
+      const projectPath = url.searchParams.get('path') ?? options.defaultProject;
+      const id = url.searchParams.get('id');
+      if (!projectPath) return sendError(res, 400, 'Missing "path"', 'MISSING_PATH');
+      if (!id) return sendError(res, 400, 'Missing "id"', 'MISSING_ID');
+
+      const unavailable = (reason: A11yUnavailableReason): void => {
+        const body: A11yUnavailable = { available: false, reason, disclosure: unavailableDisclosure(reason) };
+        // 200, not an error status: "cannot audit" is a definitive, expected
+        // answer the inspector renders, exactly like a 204 thumbnail.
+        sendJson(res, 200, body);
+      };
+
+      const logger = createLogger({ onProgress: broadcast });
+      try {
+        const artifact = await store.getArtifact(projectPath, id, logger);
+        // A code-only component cannot render in isolation — skip the browser
+        // entirely and tell the inspector there is nothing to audit.
+        if (!shouldAuditA11y(artifact.sandpack.renderability)) return unavailable('code-only');
+
+        const workspaceDir = store.get(projectPath)?.loaded.workspaceDir;
+        const key = a11yCacheKey({ componentId: id, spec: artifact.sandpack });
+        const etag = '"a11y-' + key + '"';
+
+        // The ETag is the bundle hash, so an unchanged component revalidates as a
+        // body-less 304 and a re-scan that changes the bundle refetches.
+        if (req.headers['if-none-match'] === etag) {
+          res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' });
+          res.end();
+          return;
+        }
+
+        // Disk hit → serve instantly, no browser work. Survives reloads and
+        // re-scans of unchanged source.
+        if (workspaceDir) {
+          const cached = await readCachedAudit(workspaceDir, key);
+          if (cached) return sendJsonEtag(res, 200, cached, etag);
+        }
+
+        const violations = await auditA11y({
+          targetRoot: path.resolve(projectPath),
+          spec: artifact.sandpack,
+        });
+        // null = browser unavailable, bundle failed, or the render/axe run timed
+        // out. All degrade to the same "unavailable" — never cached (transient).
+        if (!violations) return unavailable('unavailable');
+
+        const report = summarizeAxe(violations, { renderability: artifact.sandpack.renderability });
+        if (workspaceDir) {
+          // Persist for later hits; a write failure (full disk) must not fail the
+          // response — worst case we audit again next time.
+          await writeCachedAudit(workspaceDir, key, report).catch(() => {});
+        }
+        return sendJsonEtag(res, 200, report, etag);
+      } catch (err) {
+        // An unknown id is the caller's mistake (404). Anything else degrades to
+        // an "unavailable" audit, never a 500 that would break the inspector.
+        if ((err as { code?: string }).code === 'COMPONENT_NOT_FOUND') {
+          return sendError(res, 404, err instanceof Error ? err.message : 'Unknown component', 'COMPONENT_NOT_FOUND');
+        }
+        return unavailable('unavailable');
       }
     }
 

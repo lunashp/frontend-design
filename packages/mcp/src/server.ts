@@ -17,6 +17,7 @@ import {
   type Logger,
 } from '@ce/core';
 import { SessionCache } from './session-cache.js';
+import { resolveAccessibility, unavailableA11yAuditor, type A11yAuditor } from './a11y.js';
 import {
   DEFAULT_LIST_LIMIT,
   DESIGN_FIELD_IDS,
@@ -33,6 +34,13 @@ export interface McpServerOptions {
   /** Fallback project when a tool call omits `projectPath`. */
   readonly defaultProject?: string;
   readonly logger?: Logger;
+  /**
+   * How a component is audited for accessibility. The audit needs a headless
+   * browser to render + run axe, which this standalone package does not ship, so
+   * the default reports `no-render-backend` and points at the web host. A
+   * deployment embedding a render backend injects the real auditor here.
+   */
+  readonly auditA11y?: A11yAuditor;
 }
 
 /**
@@ -77,6 +85,13 @@ Copying them into a destination app imports the source app's design decisions wh
 the wrong outcome when the instruction was "match OUR theme". \`stubbedModules\` lists modules
 swapped for local stubs and the capability each swap gives up.
 
+ACCESSIBILITY: get_accessibility runs an ADVISORY axe-core audit against a component's RENDERED
+preview (contrast, missing alt/label/name, ARIA validity) so you can see its a11y debt before you
+copy it. Findings come from the render, not a source scan, and a \`stubbed\` render may add or mask
+ARIA/role findings — the response discloses this. It is advisory, never a gate. The audit needs a
+headless browser: this standalone server has none, so it returns \`available:false, reason:
+"no-render-backend"\` and points at the web host (GET /api/a11y). Do not treat that as "no issues".
+
 BUDGET: list_components returns ${DEFAULT_LIST_LIMIT} rows by default and reports
 { scanned, total, offset, returned, nextOffset, truncated }. Narrow with nameIncludes /
 pathIncludes / propIncludes / atomicLevel / kind / maxContextDependencyScore rather than paging;
@@ -88,6 +103,7 @@ type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 export function createMcpServer(options: McpServerOptions = {}): McpServer {
   const cache = options.cache ?? new SessionCache(process.env.CE_WORKSPACE);
   const logger = options.logger ?? createLogger();
+  const auditA11y = options.auditA11y ?? unavailableA11yAuditor;
 
   // A scan of a large project can outlast a client's default request timeout.
   // Forward each engine progress event as an MCP progress notification (the
@@ -316,6 +332,28 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
           designOverrides: args.designOverrides ?? {},
         };
         return ok(toCustomized(artifact, state));
+      } catch (err) {
+        return toToolError(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'get_accessibility',
+    {
+      title: 'Get accessibility audit',
+      description:
+        "ADVISORY accessibility audit for one component, so you don't import a11y debt when you harvest it. It runs axe-core against the component's RENDERED preview (missing alt/label/name, non-semantic interactive elements, colour contrast, ARIA validity) and returns a COMPACT report: `available`, `renderability`, `summary` ({ critical, serious, moderate, minor } counts over ALL violations), `findings[]` ({ ruleId, impact, help, helpUrl, nodeCount, targets } — bounded and impact-ranked, `truncated` flags a cut), `total`, and a `disclosure`. HONEST BY CONSTRUCTION: findings come from the rendered preview, not a source scan — for a `stubbed` render `stubbedContext` is true and some ARIA/role findings may be artifacts of the faked context (contrast and structural findings are genuine). It is advisory, never a pass/fail gate that hides a component. When it cannot run it says so definitively via `available:false` + `reason`: `code-only` (nothing renders to audit) or `no-render-backend` — THIS standalone MCP ships no browser, so by default it returns no-render-backend and points you at the Component Explorer web host (GET /api/a11y), which owns the render backend.",
+      inputSchema: {
+        projectPath: z.string().optional().describe('Target project root; falls back to launch default'),
+        componentId: z.string().describe('Component id from list_components'),
+      },
+    },
+    async (args, extra) => {
+      try {
+        const project = resolveProject(args.projectPath);
+        const artifact = await cache.getArtifact(project, args.componentId, callLogger(extra));
+        return ok(await resolveAccessibility(artifact, auditA11y, project));
       } catch (err) {
         return toToolError(err);
       }
