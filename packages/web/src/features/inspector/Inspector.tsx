@@ -11,15 +11,20 @@ import { ContextMeter } from '../gallery/ContextMeter.js';
 import { PreviewPane } from '../preview/PreviewPane.js';
 import { PortablePane } from '../portable/PortablePane.js';
 import { CustomizePane } from '../customize/CustomizePane.js';
+import { VariantsMatrix } from '../variants/VariantsMatrix.js';
 import { PropTable } from './PropTable.js';
 import { AccessibilitySection } from './AccessibilitySection.js';
+import { WhereUsed } from './WhereUsed.js';
 import styles from './Inspector.module.css';
 
-export const TABS = ['Details', 'Preview', 'Portable', 'Customize'] as const;
+// Variants sits with Preview — both are live renders — before the copy/re-theme
+// tabs. Adding it here is all app.tsx needs: it only holds the active `Tab`.
+export const TABS = ['Details', 'Preview', 'Variants', 'Portable', 'Customize'] as const;
 export type Tab = (typeof TABS)[number];
 const ENABLED_TABS: ReadonlySet<Tab> = new Set<Tab>([
   'Details',
   'Preview',
+  'Variants',
   'Portable',
   'Customize',
 ]);
@@ -162,6 +167,11 @@ function DetailsBody({
         <PropTable props={propModel.props} />
       </section>
 
+      {/* Blast radius before copying: who imports it (free, off the summary) and
+          what it drags in (deps + stubbed/unresolved imports, from the lazily
+          built artifact). */}
+      <WhereUsed component={component} projectRoot={projectRoot} />
+
       {/* Advisory a11y read on the rendered preview, fetched lazily only now that
           a component is open — never per gallery card (the audit is heavier than
           a thumbnail). */}
@@ -293,7 +303,8 @@ export function Inspector({
   }, [overlay, id, onClose]);
 
   // Build the full artifact once for whichever tab needs it.
-  const needsArtifact = tab === 'Preview' || tab === 'Portable' || tab === 'Customize';
+  const needsArtifact =
+    tab === 'Preview' || tab === 'Variants' || tab === 'Portable' || tab === 'Customize';
   const artifactState = useArtifact(projectRoot, needsArtifact ? id : null);
 
   if (!component) {
@@ -363,6 +374,8 @@ export function Inspector({
             <div className={styles.loadError}>{artifactState.error ?? 'Failed to build artifact.'}</div>
           ) : tab === 'Preview' ? (
             <PreviewPane artifact={artifactState.artifact} projectRoot={projectRoot} />
+          ) : tab === 'Variants' ? (
+            <VariantsMatrix artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : tab === 'Portable' ? (
             <PortablePane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : (
