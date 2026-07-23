@@ -1,8 +1,8 @@
 /** Map a CSS property — or an author-defined custom property — to a token category. */
 
 import type { TokenCategory } from '../types/token-model.js';
-import { isColor, isSingleLength } from './color.js';
-import { isCssWideKeyword, isFontStack, isShadowValue } from './value-shape.js';
+import { isColor, isSingleLength, normalizeColor } from './color.js';
+import { collapseWhitespace, isCssWideKeyword, isFontStack, isShadowValue } from './value-shape.js';
 
 const COLOR_PROP =
   /^(color|background|background-color|border(-top|-right|-bottom|-left)?-color|outline-color|fill|stroke|caret-color|accent-color)$/;
@@ -40,6 +40,21 @@ export function categoryFor(property: string): TokenCategory {
 
 /** Categories we tokenize as single length values. */
 export const LENGTH_CATEGORIES = new Set<TokenCategory>(['radius', 'size', 'spacing', 'typography']);
+
+/**
+ * Normalized token value for a standard (non-custom-property) declaration; null
+ * when the value is not themeable for its category. Shared by the CSS path and
+ * the styled/emotion path so a colour or length is tokenized identically no
+ * matter which surface it was written on.
+ */
+export function normalizeStandardValue(category: TokenCategory, rawValue: string): string | null {
+  if (category === 'color' && isColor(rawValue)) return normalizeColor(rawValue);
+  // A shadow is a compound value, so it is neither a color nor a single length —
+  // it is tokenized verbatim, which is what makes elevation re-themeable at all.
+  if (category === 'shadow' && !isCssWideKeyword(rawValue)) return collapseWhitespace(rawValue);
+  if (LENGTH_CATEGORIES.has(category) && isSingleLength(rawValue)) return rawValue;
+  return null;
+}
 
 const RADIUS_HINT = /(radius|rounded)/;
 const SPACING_HINT = /(gap|space|spacing|padding|margin|inset)/;

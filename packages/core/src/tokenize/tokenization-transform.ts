@@ -18,14 +18,15 @@ import type { Rule } from 'postcss';
 import type { FileMap } from '../types/portable-bundle.js';
 import type { Token, TokenCategory, TokenModel, TokenUsage } from '../types/token-model.js';
 import { shortHash } from '../util/paths.js';
-import { categoryFor, categoryForCustomProperty, LENGTH_CATEGORIES } from './categorize.js';
-import { isColor, isSingleLength, normalizeColor } from './color.js';
+import { categoryFor, categoryForCustomProperty, normalizeStandardValue } from './categorize.js';
+import { normalizeColor } from './color.js';
 import {
   applyBareVarFallbacks,
   displayNameForCustomProperty,
   isTopLevelRootDecl,
 } from './custom-properties.js';
-import { collapseWhitespace, containsVar, isCssWideKeyword } from './value-shape.js';
+import { tokenizeStyledTemplates } from './styled-css.js';
+import { collapseWhitespace, containsVar } from './value-shape.js';
 
 export const TOKENS_CSS_PATH = '/tokens.css';
 
@@ -64,16 +65,6 @@ function isCssFile(path: string): boolean {
 function selectorOf(decl: postcss.Declaration): string {
   const parent = decl.parent as Rule | undefined;
   return parent && 'selector' in parent ? parent.selector : '';
-}
-
-/** Normalized token value for a standard declaration; null when not themeable. */
-function normalizeStandardValue(category: TokenCategory, rawValue: string): string | null {
-  if (category === 'color' && isColor(rawValue)) return normalizeColor(rawValue);
-  // A shadow is a compound value, so it is neither a color nor a single length —
-  // it is tokenized verbatim, which is what makes elevation re-themeable at all.
-  if (category === 'shadow' && !isCssWideKeyword(rawValue)) return collapseWhitespace(rawValue);
-  if (LENGTH_CATEGORIES.has(category) && isSingleLength(rawValue)) return rawValue;
-  return null;
 }
 
 export function tokenizeBundle(files: FileMap): TokenizeResult {
@@ -116,6 +107,34 @@ export function tokenizeBundle(files: FileMap): TokenizeResult {
     } while (takenNames.has(name));
     takenNames.add(name);
     return { name, ordinal: counters[category] };
+  }
+
+  // Reuse-or-create a standard token and record a usage. Shared by the CSS pass
+  // and the styled/emotion pass so a value used on either surface collapses to
+  // ONE token under one name — the whole point of a single bundle namespace.
+  function mintStandard(
+    category: TokenCategory,
+    normalized: string,
+    rawValue: string,
+    usage: TokenUsage,
+  ): string {
+    const key = `${category}:${normalized}`;
+    let token = tokens.get(key);
+    if (!token) {
+      const { name, ordinal } = generateName(category);
+      token = {
+        id: shortHash(key),
+        name,
+        displayName: `${CATEGORY_LABEL[category]} ${ordinal}`,
+        category,
+        value: normalized,
+        fallback: rawValue,
+        usages: [],
+      };
+      tokens.set(key, token);
+    }
+    token.usages.push(usage);
+    return token.name;
   }
 
   /** Custom properties adopted as tokens: name -> literal, for var() fallbacks. */
@@ -173,29 +192,19 @@ export function tokenizeBundle(files: FileMap): TokenizeResult {
       const category = categoryFor(decl.prop);
       const normalized = normalizeStandardValue(category, rawValue);
       if (!normalized) return;
-
-      const key = `${category}:${normalized}`;
-      let token = tokens.get(key);
-      if (!token) {
-        const { name, ordinal } = generateName(category);
-        token = {
-          id: shortHash(key),
-          name,
-          displayName: `${CATEGORY_LABEL[category]} ${ordinal}`,
-          category,
-          value: normalized,
-          fallback: rawValue,
-          usages: [],
-        };
-        tokens.set(key, token);
-      }
-      token.usages.push(usage);
-      decl.value = `var(${token.name}, ${rawValue})`;
+      const name = mintStandard(category, normalized, rawValue, usage);
+      decl.value = `var(${name}, ${rawValue})`;
     });
 
     for (const rule of emptiedRules) rule.remove();
     outFiles[path] = root.toString();
   }
+
+  // Styled/emotion pass runs AFTER the CSS pass so a value already tokenized from
+  // a stylesheet reuses that token; a value seen only in a styled template mints
+  // a fresh name via the same generator. It rewrites its own bundle .tsx copies.
+  const styled = tokenizeStyledTemplates(outFiles, mintStandard);
+  for (const [path, content] of Object.entries(styled.files)) outFiles[path] = content;
 
   if (hoisted.size > 0) {
     for (const path of roots.keys()) {
