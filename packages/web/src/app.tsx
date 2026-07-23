@@ -26,6 +26,8 @@ import {
 import { BasketContext, type BasketControls } from './features/kit/basket-context.js';
 import { KitButton } from './features/kit/KitButton.js';
 import { KitPane } from './features/kit/KitPane.js';
+import { CompareButton } from './features/compare/CompareButton.js';
+import { ComparePane, type CompareItem } from './features/compare/ComparePane.js';
 import styles from './app.module.css';
 
 /** Mirrors the `max-width: 1180px` breakpoint in app.module.css, below which
@@ -62,6 +64,9 @@ export function App() {
   // them — the basket is cleared when the scanned root changes, below.
   const [basket, setBasket] = useState<Basket>(EMPTY_BASKET);
   const [kitOpen, setKitOpen] = useState(false);
+  // Compare reuses the SAME basket set (it IS "the components I'm weighing"), so
+  // there is no second selection to track — only which overlay is open.
+  const [compareOpen, setCompareOpen] = useState(false);
   const compact = useMediaQuery(COMPACT_QUERY);
 
   // Auto-scan the host's default project once, for an immediate first view — and
@@ -126,6 +131,7 @@ export function App() {
   const toggleBasket = useCallback((id: string) => setBasket((b) => toggleInBasket(b, id)), []);
   const removeFromKit = useCallback((id: string) => setBasket((b) => removeFromBasket(b, id)), []);
   const closeKit = useCallback(() => setKitOpen(false), []);
+  const closeCompare = useCallback(() => setCompareOpen(false), []);
   // A fresh scan target invalidates every id in the basket, so drop them and shut
   // the drawer rather than carry ids the new project has never heard of into a
   // POST /api/kit that would 404.
@@ -133,6 +139,7 @@ export function App() {
   useEffect(() => {
     setBasket(EMPTY_BASKET);
     setKitOpen(false);
+    setCompareOpen(false);
   }, [scannedRoot]);
   // The basket controls the gallery cards read via context — memoized so only a
   // real basket change re-renders the mounted cards.
@@ -141,6 +148,15 @@ export function App() {
     [basket, toggleBasket],
   );
   const basketIds = useMemo(() => [...basket], [basket]);
+  // The basket selection with names resolved from the scan, in insertion order —
+  // Compare needs names for its column headers and its "trim to 3" guidance
+  // without paying to build an artifact just to read a name.
+  const compareItems = useMemo<CompareItem[]>(() => {
+    const names = new Map(
+      result?.components.map((c) => [c.descriptor.id, c.descriptor.name]) ?? [],
+    );
+    return basketIds.map((id) => ({ id, name: names.get(id) ?? id }));
+  }, [basketIds, result]);
 
   const inspector = (
     <Inspector
@@ -179,6 +195,7 @@ export function App() {
                   {result.projectRoot.split('/').slice(-1)[0]}
                 </span>
               </div>
+              <CompareButton count={basket.size} onClick={() => setCompareOpen(true)} />
               <KitButton count={basket.size} onClick={() => setKitOpen(true)} />
             </div>
           )}
@@ -276,6 +293,15 @@ export function App() {
             projectRoot={result.projectRoot}
             ids={basketIds}
             onClose={closeKit}
+            onRemove={removeFromKit}
+          />
+        )}
+
+        {compareOpen && result && (
+          <ComparePane
+            projectRoot={result.projectRoot}
+            items={compareItems}
+            onClose={closeCompare}
             onRemove={removeFromKit}
           />
         )}
