@@ -21,6 +21,10 @@ const FUNCTION_TYPE = /=>|\bFunction\b/;
 // `string` as a whole union member (`string`, `string | X`, `X | string`) —
 // NOT `string` buried inside `Record<string, …>` or `{ k: string }`.
 const STRING_MEMBER = /(^|\|)\s*string\s*(\||$)/;
+// A prop that accepts arbitrary content INCLUDING a string: `ReactNode` or
+// `ReactChild`. A text placeholder is valid. (A pure `ReactElement` — MUI's
+// `avatar`/`icon` — is deliberately NOT here: it rejects a string.)
+const NODE_ACCEPTS_STRING = /ReactNode|ReactChild/;
 // A React component/element type. JSON can't carry one, and rendering a {}
 // stub as an element throws "Element type is invalid: got object".
 const COMPONENT_TYPE = /\b(ComponentType|ElementType|FunctionComponent|ComponentClass|ReactElement|SvgIconComponent)\b|\bFC\b|\bJSX\.Element\b/;
@@ -90,10 +94,23 @@ export function generateSampleProps(
       continue;
     }
 
-    const isChildren = prop.name === 'children' || prop.kind === 'node';
-    // Fill children/nodes and enums always (shows variety); other optionals keep
-    // their own defaults unless required.
-    if (!isChildren && !prop.required && prop.kind !== 'enum' && prop.kind !== 'color') {
+    if (prop.kind === 'node') {
+      // The text placeholder is valid only where a STRING is accepted: `children`,
+      // a `ReactNode`/`ReactChild` content prop, or a union with a bare `string`
+      // branch. An element-only prop (`avatar`/`icon`: `ReactElement`) rejects it —
+      // a string trips MUI's PropTypes.element ("expected a single ReactElement") —
+      // so omit it and let the component render without.
+      const acceptsString =
+        prop.name === 'children' ||
+        NODE_ACCEPTS_STRING.test(prop.tsType) ||
+        STRING_MEMBER.test(prop.tsType);
+      if (acceptsString) out[prop.name] = descriptor.name;
+      continue;
+    }
+
+    // Fill enums and colors always (shows variety); other optionals keep their
+    // own defaults unless required.
+    if (!prop.required && prop.kind !== 'enum' && prop.kind !== 'color') {
       continue;
     }
 

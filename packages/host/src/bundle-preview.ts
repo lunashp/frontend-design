@@ -244,6 +244,23 @@ ${css}</style>
     try { Object.defineProperty(window, name, { value: memStorage(), configurable: true }); }
     catch (e) { try { window[name] = memStorage(); } catch (e2) { /* give up */ } }
   });
+
+  // document.cookie throws the SAME SecurityError on any access in an opaque
+  // sandbox, so a component (or emotion/MUI, i18n, an auth/theme hook) that reads
+  // it crashes before render. Shim it as an in-memory string jar — reads never
+  // throw, writes accumulate k=v pairs — without granting same-origin.
+  var cookieBroken = false;
+  try { void document.cookie; } catch (e) { cookieBroken = true; }
+  if (cookieBroken) {
+    var jar = '';
+    var cookieDesc = {
+      configurable: true,
+      get: function () { return jar; },
+      set: function (v) { var pair = String(v).split(';')[0]; if (pair) jar = jar ? jar + '; ' + pair : pair; }
+    };
+    try { Object.defineProperty(document, 'cookie', cookieDesc); }
+    catch (e) { try { Object.defineProperty(Document.prototype, 'cookie', cookieDesc); } catch (e2) { /* give up */ } }
+  }
 })();
 </script>
 <script>

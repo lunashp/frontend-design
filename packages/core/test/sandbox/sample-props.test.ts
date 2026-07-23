@@ -108,6 +108,35 @@ describe('generateSampleProps', () => {
     expect(typeof out.iconSrc).toBe('string');
   });
 
+  // Regression: MUI's `avatar`/`icon`/`deleteIcon` are `ReactElement`, classified
+  // `node`. They were filled with the text placeholder, tripping PropTypes.element
+  // ("Invalid prop `avatar` of type `string` ... expected a single ReactElement").
+  it('omits an element-only node prop (ReactElement) — a string is not a valid element', () => {
+    const out = gen([
+      prop({ name: 'avatar', kind: 'node', tsType: 'ReactElement' }),
+      prop({ name: 'icon', kind: 'node', tsType: 'ReactElement<unknown, string>' }),
+      prop({ name: 'deleteIcon', kind: 'node', tsType: 'ReactElement' }),
+    ]);
+    expect(Object.keys(out)).toHaveLength(0);
+  });
+
+  it('still fills a ReactNode content prop (accepts a string) with the text placeholder', () => {
+    const out = gen([
+      prop({ name: 'label', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'children', kind: 'node', tsType: 'ReactNode' }),
+    ]);
+    expect(out).toEqual({ label: 'Widget', children: 'Widget' });
+  });
+
+  it('fills a node prop whose union accepts string, but not a pure-element union', () => {
+    expect(gen([prop({ name: 'title', kind: 'node', tsType: 'string | ReactElement' })]).title).toBe(
+      'Widget',
+    );
+    expect('end' in gen([prop({ name: 'end', kind: 'node', tsType: 'ReactElement | false' })])).toBe(
+      false,
+    );
+  });
+
   it('leaves a required component-type prop unset ({} would render as an invalid element)', () => {
     const out = gen([
       prop({ name: 'Icon', kind: 'unknown', tsType: 'React.ComponentType<{ sx?: object }>', required: true }),

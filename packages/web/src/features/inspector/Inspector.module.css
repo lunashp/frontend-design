@@ -105,13 +105,21 @@
 .tabs {
   display: flex;
   gap: var(--space-1);
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-4);
   border-bottom: 1px solid var(--line);
+  /* Five tabs must never clip the last one ("Customize") in the inspector
+     column — scroll horizontally if the column is too narrow rather than cut. */
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .tab {
-  padding: var(--space-3) var(--space-3);
+  /* Tight horizontal padding so all five fit without scrolling at the normal
+     column width; nowrap + no-shrink keeps each label intact if it does scroll. */
+  padding: var(--space-3) var(--space-2);
   font-size: var(--text-sm);
   color: var(--text-faint);
+  white-space: nowrap;
+  flex: 0 0 auto;
   border-bottom: 2px solid transparent;
   transition: color var(--dur) var(--ease);
 }

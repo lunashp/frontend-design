@@ -6,6 +6,7 @@
 import type { ComponentDoc, PropItem } from 'react-docgen-typescript';
 import type { ComponentDescriptor } from '../../types/component.js';
 import type { ControlKind, PropControl, PropModel } from '../../types/prop-model.js';
+import { isDomNoiseProp } from './dom-props.js';
 import type { ReactProgramHandle } from './ts-program.js';
 
 const EMPTY: PropModel = { props: [] };
@@ -102,6 +103,10 @@ export function extractProps(
   }
 
   const props = Object.values(doc.props)
+    // Drop React's inherited DOM/ARIA attribute surface (a MUI wrapper reports
+    // ~290 props; its real ones are a handful) so the model is the component's
+    // own API — and the sandbox never fills an inherited icon/element prop.
+    .filter((prop) => !isDomNoiseProp(prop.name))
     .map(toControl)
     .sort((a, b) => Number(b.required) - Number(a.required) || a.name.localeCompare(b.name));
 

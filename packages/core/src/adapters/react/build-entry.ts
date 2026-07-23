@@ -66,13 +66,20 @@ class __ErrorBoundary extends React.Component<{ children: React.ReactNode }, { e
   }
   render() {
     if (this.state.error) {
+      // Not framed as an error: a component that consumes a router, a data store,
+      // an app-specific settings/theme provider, i18n, or that renders async on
+      // the server genuinely CANNOT render standalone — that is a property of the
+      // component, not a fault of the tool. Say so calmly and point at the code,
+      // rather than a red alert that reads as "the tool is broken".
       return (
-        <div role="alert" style={{ font: '13px/1.5 ui-monospace, monospace', color: '#b4232c', padding: '12px 14px', maxWidth: 520 }}>
-          <strong style={{ display: 'block', marginBottom: 6 }}>This component threw while rendering in isolation.</strong>
-          <span style={{ color: '#7a7f87' }}>
-            It likely needs real data or context the preview can't synthesize. Message:
+        <div style={{ font: '13px/1.6 system-ui, sans-serif', color: '#3f4650', padding: '16px 18px', maxWidth: 460 }}>
+          <strong style={{ display: 'block', marginBottom: 6, color: '#1f2530' }}>Needs app context to render live</strong>
+          <span style={{ color: '#6b727c' }}>
+            This component depends on something an isolated preview can't supply —
+            a router, a data store, an app-specific provider, i18n, or async
+            server rendering. Its full source is on the <strong>Portable</strong> tab.
           </span>
-          <pre style={{ whiteSpace: 'pre-wrap', margin: '6px 0 0' }}>{String(this.state.error?.message ?? this.state.error)}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', margin: '10px 0 0', fontSize: 11, color: '#9aa0a6' }}>{String(this.state.error?.message ?? this.state.error)}</pre>
         </div>
       );
     }
