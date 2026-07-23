@@ -17,6 +17,22 @@ export const ARTIFACT_VERSION = 2 as const;
 export type ArtifactVersion = typeof ARTIFACT_VERSION;
 
 /**
+ * Reverse-import-graph result for one component: how many OTHER analyzed source
+ * files import it, plus a bounded sample of which files.
+ *
+ * A RANK / DISPLAY / tie-break signal ONLY — NEVER a reason to hide a component.
+ * Story/test/spec files are excluded from the analyzed program, so a component
+ * used only by Storybook stories legitimately reads 0; the count therefore means
+ * "imports from analyzed source (stories/tests excluded)", not "is it used".
+ */
+export interface ComponentUsage {
+  /** Distinct analyzed files that import this component (stories/tests excluded). */
+  readonly usedByCount: number;
+  /** A bounded sample of those importing files (absolute, like descriptor.filePath). */
+  readonly usedByFiles: readonly string[];
+}
+
+/**
  * Lightweight per-component record for the gallery LIST (P1). Cheap to compute
  * for every component in a project.
  */
@@ -30,6 +46,14 @@ export interface ComponentSummary {
    */
   readonly signals: ClassificationSignals;
   readonly propModel: PropModel;
+  /**
+   * Reverse-import-graph reuse signal, attached once per scan. Optional because
+   * the many hand-built ComponentSummary fixtures (tests, e2e) do not compute an
+   * import graph, whereas a real `scan()` always attaches it. Purely a rank /
+   * display / tie-break signal — see ComponentUsage; never used to hide a
+   * component, since stories-only components correctly read 0.
+   */
+  readonly usage?: ComponentUsage;
 }
 
 /**

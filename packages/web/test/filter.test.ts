@@ -12,6 +12,7 @@ function comp(
     props?: string[];
     hooks?: string[];
     contexts?: string[];
+    used?: number;
   } = {},
 ): ComponentSummary {
   return {
@@ -23,6 +24,7 @@ function comp(
     },
     signals: { hookNames: opts.hooks ?? [], contextConsumers: opts.contexts ?? [] },
     propModel: { props: (opts.props ?? []).map((p) => ({ name: p })) },
+    usage: opts.used === undefined ? undefined : { usedByCount: opts.used, usedByFiles: [] },
   } as unknown as ComponentSummary;
 }
 
@@ -172,6 +174,40 @@ describe('applyFilters — query matches the signals behind the classification',
     expect(applyFilters([FEED, THEMED, PLAIN], { ...DEFAULT_FILTERS, query: 'useRouter' })).toEqual(
       [],
     );
+  });
+});
+
+describe('applyFilters — sort order (reuse signal)', () => {
+  // Same atomic level and context score, differing only in how many files import
+  // them — so ordering is driven purely by the usage signal.
+  const REUSE: ComponentSummary[] = [
+    comp('Button', 'atom', { used: 12 }),
+    comp('Card', 'atom', { used: 3 }),
+    comp('Chip', 'atom', { used: 40 }),
+  ];
+
+  it('mostUsed leads with the most-imported component', () => {
+    expect(names(applyFilters(REUSE, { ...DEFAULT_FILTERS, sort: 'mostUsed' }))).toEqual([
+      'Chip',
+      'Button',
+      'Card',
+    ]);
+  });
+
+  it('reliability breaks a context-score tie by usage (the canonical duplicate wins)', () => {
+    // Two Buttons at the same score: the widely-imported one is the real design
+    // component and must sort ahead of the barely-used duplicate.
+    const dupes = [
+      comp('Button', 'atom', { path: '/p/legacy/Button.tsx', used: 1 }),
+      comp('Button', 'atom', { path: '/p/ui/Button.tsx', used: 30 }),
+    ];
+    const out = applyFilters(dupes, DEFAULT_FILTERS);
+    expect(out[0]?.descriptor.filePath).toBe('/p/ui/Button.tsx');
+  });
+
+  it('treats a summary with no usage as 0 rather than throwing', () => {
+    const mixed = [comp('A', 'atom', { used: 5 }), comp('B', 'atom')];
+    expect(names(applyFilters(mixed, { ...DEFAULT_FILTERS, sort: 'mostUsed' }))).toEqual(['A', 'B']);
   });
 });
 

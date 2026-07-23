@@ -170,20 +170,23 @@
 
 .foot {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto auto 1fr;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
-.props {
+.props,
+.usage {
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
   font-size: var(--text-xs);
   color: var(--text-faint);
+  white-space: nowrap;
 }
 
-.propNum {
+.propNum,
+.usageNum {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   font-weight: 600;

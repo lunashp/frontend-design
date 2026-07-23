@@ -200,6 +200,17 @@ export interface ComponentRow {
   readonly hooks: readonly string[];
   /** Context this component reads (app + styling) — the raw signal behind the score. */
   readonly contextConsumers: readonly string[];
+  /**
+   * Reverse-import-graph reuse signal: how many OTHER scanned files import this
+   * component. The most-imported member of a duplicate-name cluster is usually
+   * the canonical design component ("which Button is real"). Counts imports from
+   * ANALYZED SOURCE ONLY — story/test/spec files are excluded from the scan, so a
+   * component used only by Storybook stories reads 0. A rank/tie-break signal
+   * only; never a reason to hide a component.
+   */
+  readonly usedByCount: number;
+  /** A bounded sample of the importing files behind `usedByCount`. */
+  readonly usedByFiles: readonly string[];
 }
 
 /** One term of a row's `scoreBreakdown`: what pushed the score up, and by how much. */
@@ -230,7 +241,35 @@ export function projectComponent(c: ComponentSummary, view: ComponentView = 'com
     ),
     hooks: [...c.signals.hookNames],
     contextConsumers: [...c.signals.contextConsumers],
+    usedByCount: c.usage?.usedByCount ?? 0,
+    usedByFiles: c.usage ? [...c.usage.usedByFiles] : [],
   };
+}
+
+/** Imports from analyzed source; absent on hand-built summaries, so default to 0. */
+function usedByCount(c: ComponentSummary): number {
+  return c.usage?.usedByCount ?? 0;
+}
+
+/**
+ * Row ordering for `list_components`. `default` keeps the engine's discovery
+ * order (name-sorted); `mostUsed` leads with the most-imported component — the
+ * canonical member of a duplicate-name cluster.
+ */
+export type ComponentOrder = 'default' | 'mostUsed';
+
+/** Most-imported first; ties fall to the more isolable, then name — a stable order. */
+function orderComponents(
+  components: readonly ComponentSummary[],
+  order: ComponentOrder,
+): readonly ComponentSummary[] {
+  if (order !== 'mostUsed') return components;
+  return [...components].sort(
+    (a, b) =>
+      usedByCount(b) - usedByCount(a) ||
+      a.classification.contextDependencyScore - b.classification.contextDependencyScore ||
+      a.descriptor.name.localeCompare(b.descriptor.name),
+  );
 }
 
 /** One compact row per component — the `id` is the handle for the other tools. */
@@ -241,14 +280,15 @@ export function toComponentRows(
   return components.map((c) => projectComponent(c, view));
 }
 
-/** Filter + page + shape — the `list_components` payload. */
+/** Filter + order + page + shape — the `list_components` payload. */
 export function toComponentList(
   components: readonly ComponentSummary[],
   filter: ComponentFilter,
   page: PageRequest = {},
+  order: ComponentOrder = 'default',
   view: ComponentView = 'compact',
 ) {
-  const matched = filterComponents(components, filter);
+  const matched = orderComponents(filterComponents(components, filter), order);
   const p = paginate(matched, page);
   return {
     // Components in the project; `total` is how many survived the filter.

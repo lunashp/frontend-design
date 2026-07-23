@@ -10,6 +10,7 @@ import type { ComponentDescriptor } from '../types/component.js';
 import type {
   ComponentArtifact,
   ComponentSummary,
+  ComponentUsage,
   ScanFailure,
   ScanResult,
 } from '../types/artifact.js';
@@ -23,6 +24,7 @@ import { detectDegenerateHeuristics } from '../classify/heuristic-health.js';
 import { resolvePortability } from '../portability/portability-resolver.js';
 import { resolveMany } from '../portability/resolve-many.js';
 import type { PortableKit } from '../types/portable-kit.js';
+import { buildUsageIndex } from '../graph/usage-index.js';
 import { tokenizeBundle, TOKENS_CSS_PATH } from '../tokenize/tokenization-transform.js';
 import { mineThemeTokens, type ThemeMiningResult } from '../theme/theme-extractor.js';
 import type { TokenModel } from '../types/token-model.js';
@@ -42,6 +44,13 @@ export interface EngineSessionOptions {
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+/**
+ * The usage a component gets when the reverse graph found no importer (or could
+ * not run — e.g. a non-ts-morph adapter). Shared and never mutated, so every
+ * unused component points at the same frozen zero rather than allocating one.
+ */
+const EMPTY_USAGE: ComponentUsage = { usedByCount: 0, usedByFiles: [] };
 
 export class EngineSession {
   private descriptorsById = new Map<string, ComponentDescriptor>();
@@ -115,17 +124,14 @@ export class EngineSession {
 
     const warnings: string[] = [];
     const failures: ScanFailure[] = [];
-    const components: ComponentSummary[] = [];
-    this.summariesById = new Map();
+    const baseSummaries: ComponentSummary[] = [];
 
     for (const [i, descriptor] of descriptors.entries()) {
       try {
         const propModel = this.adapter.extractProps(descriptor, this.program);
         const signals = this.adapter.extractSignals(descriptor, this.program);
         const classification = classify(descriptor, signals);
-        const summary: ComponentSummary = { descriptor, classification, signals, propModel };
-        components.push(summary);
-        this.summariesById.set(descriptor.id, summary);
+        baseSummaries.push({ descriptor, classification, signals, propModel });
       } catch (err) {
         // Recorded twice on purpose: `warnings` stays the human-readable log,
         // `failures` names the component so a caller can link to the file
@@ -147,6 +153,20 @@ export class EngineSession {
       await yieldToEventLoop();
     }
 
+    // Reverse import graph, computed ONCE per scan AFTER classification: walk
+    // every analyzed source file once and credit each import to the component it
+    // references, so each summary carries how many OTHER files import it. Run
+    // after the yielding classify loop (not before it) so its single synchronous
+    // pass never delays the first event-loop turn the host relies on. Attached
+    // immutably. See buildUsageIndex for the honesty bar — it is a rank signal,
+    // never a filter.
+    const usageIndex = this.buildUsage(descriptors);
+    const components: ComponentSummary[] = baseSummaries.map((s) => ({
+      ...s,
+      usage: usageIndex.get(s.descriptor.id) ?? EMPTY_USAGE,
+    }));
+    this.summariesById = new Map(components.map((s) => [s.descriptor.id, s]));
+
     // Graded only once the whole scan is in: a detector's hit-rate is a
     // property of the corpus, not of any one component. It is returned as its
     // own typed field rather than flattened into `warnings`: appended there it
@@ -164,6 +184,18 @@ export class EngineSession {
       warnings,
       heuristicWarnings,
     };
+  }
+
+  /**
+   * Build the reverse import graph for the discovered set. Returns an empty map
+   * when the adapter exposes no ts-morph project (e.g. the synthetic test
+   * adapters, whose `handle` is null): usage is a best-effort enrichment, so a
+   * missing program yields zero usage rather than failing the whole scan.
+   */
+  private buildUsage(descriptors: readonly ComponentDescriptor[]): Map<string, ComponentUsage> {
+    const tsProject = (this.program.handle as { tsProject?: Project } | null)?.tsProject;
+    if (!tsProject) return new Map();
+    return buildUsageIndex(tsProject, descriptors, this.loaded);
   }
 
   /** Look up a previously-scanned descriptor by id (used by P2+ artifact builds). */
@@ -246,6 +278,9 @@ export class EngineSession {
       classification: summary.classification,
       signals: summary.signals,
       propModel: summary.propModel,
+      // Carry the scan-time reuse signal onto the full artifact so an opened
+      // component keeps its "used by N" without a second lookup.
+      usage: summary.usage,
       bundle,
       tokenModel,
       sandpack,

@@ -54,6 +54,10 @@ export {
   type GradedSignal,
 } from './classify/heuristic-health.js';
 
+// Reverse import graph: how many OTHER files import each component (a rank /
+// display / tie-break reuse signal — never a filter; see usage-index.ts).
+export { buildUsageIndex } from './graph/usage-index.js';
+
 // Portability + sandbox (P2)
 export { buildImportGraph, type ImportGraph } from './graph/import-graph.js';
 export { resolvePortability } from './portability/portability-resolver.js';

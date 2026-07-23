@@ -21,8 +21,9 @@ export function ComponentCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const { descriptor, classification, propModel } = component;
+  const { descriptor, classification, propModel, usage } = component;
   const propCount = propModel.props.length;
+  const usedBy = usage?.usedByCount ?? 0;
   const basket = useBasket();
   const picked = basket.has(descriptor.id);
 
@@ -57,6 +58,18 @@ export function ComponentCard({
             <span className={styles.propNum}>{propCount}</span>
             {propCount === 1 ? 'prop' : 'props'}
           </span>
+          {usage && (
+            // Reuse signal: imports from the SCANNED source only. A component used
+            // only by stories/tests reads 0 (those files are outside the scan), so
+            // the title states the caveat rather than implying "unused".
+            <span
+              className={styles.usage}
+              title={`Imported by ${usedBy} scanned file${usedBy === 1 ? '' : 's'} (stories & tests excluded)`}
+            >
+              <span className={styles.usageNum}>{usedBy}</span>
+              used by
+            </span>
+          )}
           <ContextMeter score={classification.contextDependencyScore} compact />
         </div>
       </button>

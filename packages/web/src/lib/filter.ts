@@ -3,11 +3,21 @@
 import type { AtomicLevel, ComponentKind, ComponentSummary } from '../api/types.js';
 import { isDesignArea, relativeDir, relativePath, sourceArea } from './source-area.js';
 
+/**
+ * Result ordering. `reliability` leads with the most isolable components (lowest
+ * context score) — the ones that render cleanest. `mostUsed` leads with the most
+ * imported — the real design component in a duplicate-name cluster. Usage counts
+ * imports from analyzed source only (stories/tests are excluded from the scan),
+ * so it is a rank signal, never a way to hide anything.
+ */
+export type SortOrder = 'reliability' | 'mostUsed';
+
 export interface FilterState {
   query: string;
   ranks: AtomicLevel[];
   kinds: ComponentKind[];
   presentationalOnly: boolean;
+  sort: SortOrder;
   /** Show only genuine design components, hiding the categories that dominate a
    *  real scan as noise: SVG icons, route/page compositions, and app
    *  infrastructure (HOCs, providers, style wrappers). Measured on a 192-component
@@ -26,9 +36,15 @@ export const DEFAULT_FILTERS: FilterState = {
   ranks: [],
   kinds: [],
   presentationalOnly: false,
+  sort: 'reliability',
   designOnly: true,
   dir: null,
 };
+
+/** Imports from analyzed source; absent on hand-built summaries, so default to 0. */
+function usedBy(c: ComponentSummary): number {
+  return c.usage?.usedByCount ?? 0;
+}
 
 /**
  * Name + path + prop names + the signals behind the classification. Prop names
@@ -73,10 +89,18 @@ export function applyFilters(
       return true;
     })
     .slice()
-    .sort(
-      (a, b) =>
-        a.classification.contextDependencyScore - b.classification.contextDependencyScore ||
-        a.descriptor.name.localeCompare(b.descriptor.name),
+    .sort((a, b) =>
+      f.sort === 'mostUsed'
+        ? // Most-imported first; ties fall to the more isolable, then name.
+          usedBy(b) - usedBy(a) ||
+          a.classification.contextDependencyScore - b.classification.contextDependencyScore ||
+          a.descriptor.name.localeCompare(b.descriptor.name)
+        : // Reliability: most isolable first, then the more-used one — the
+          // tie-break that surfaces the canonical member of a duplicate-name
+          // cluster — then name.
+          a.classification.contextDependencyScore - b.classification.contextDependencyScore ||
+          usedBy(b) - usedBy(a) ||
+          a.descriptor.name.localeCompare(b.descriptor.name),
     );
 }
 

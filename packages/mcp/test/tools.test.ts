@@ -45,6 +45,7 @@ interface CompOpts {
   propCount?: number;
   filePath?: string;
   propNames?: string[];
+  usedByCount?: number;
 }
 
 function props(opts: CompOpts): PropControl[] {
@@ -76,6 +77,10 @@ function comp(
     },
     signals: SIGNALS,
     propModel: { props: props(opts) },
+    usage:
+      opts.usedByCount === undefined
+        ? undefined
+        : { usedByCount: opts.usedByCount, usedByFiles: [] },
   };
 }
 
@@ -83,8 +88,9 @@ const COMPONENTS: ComponentSummary[] = [
   comp('Button', 'atom', 'presentational', {
     filePath: '/p/src/ui/Button.tsx',
     propNames: ['label', 'onClick'],
+    usedByCount: 12,
   }),
-  comp('Card', 'molecule', 'presentational', { filePath: '/p/src/ui/Card.tsx' }),
+  comp('Card', 'molecule', 'presentational', { filePath: '/p/src/ui/Card.tsx', usedByCount: 3 }),
   comp('UserPanel', 'organism', 'container', { score: 5, filePath: '/p/src/app/UserPanel.tsx' }),
   comp('Dashboard', 'page', 'container', { score: 9, filePath: '/p/src/app/Dashboard.tsx' }),
 ];
@@ -336,6 +342,15 @@ describe('toComponentRows / projectComponent', () => {
       projectComponent(COMPONENTS[0] as ComponentSummary, 'full' as 'compact'),
     ).toThrow(/Unknown component view/);
   });
+
+  it('carries the reverse-import reuse signal, defaulting to 0 when a summary has no usage', () => {
+    const [button] = toComponentRows([COMPONENTS[0] as ComponentSummary]);
+    expect(button?.usedByCount).toBe(12);
+    expect(Array.isArray(button?.usedByFiles)).toBe(true);
+    // UserPanel was built without usage — the row reports 0, not undefined.
+    const [panel] = toComponentRows([COMPONENTS[2] as ComponentSummary]);
+    expect(panel?.usedByCount).toBe(0);
+  });
 });
 
 describe('toComponentList', () => {
@@ -347,6 +362,16 @@ describe('toComponentList', () => {
     expect(list.nextOffset).toBe(1);
     expect(list.truncated).toBe(true);
     expect(list.components).toHaveLength(1);
+  });
+
+  it('keeps discovery order by default but ranks by usage when order="mostUsed"', () => {
+    const names = (order: 'default' | 'mostUsed') =>
+      toComponentList(COMPONENTS, {}, {}, order).components.map((c) => c.name);
+    // Default: whatever order the components came in (discovery / name-sorted upstream).
+    expect(names('default')).toEqual(['Button', 'Card', 'UserPanel', 'Dashboard']);
+    // mostUsed: Button (12) and Card (3) lead; the usage-less rows (0) fall to the
+    // context-score/name tie-break behind them.
+    expect(names('mostUsed').slice(0, 2)).toEqual(['Button', 'Card']);
   });
 });
 

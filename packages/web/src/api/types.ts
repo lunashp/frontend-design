@@ -64,11 +64,25 @@ export interface PropModel {
   props: PropControl[];
 }
 
+/**
+ * Reverse-import-graph reuse signal — how many OTHER analyzed files import a
+ * component. A RANK / DISPLAY / tie-break signal ONLY, never a reason to hide a
+ * component: story/test/spec files are outside the analyzed program, so a
+ * component used only by stories reads 0. "imports from analyzed source
+ * (stories/tests excluded)".
+ */
+export interface ComponentUsage {
+  usedByCount: number;
+  usedByFiles: string[];
+}
+
 export interface ComponentSummary {
   descriptor: ComponentDescriptor;
   classification: Classification;
   signals: ClassificationSignals;
   propModel: PropModel;
+  /** Optional: a real scan always attaches it; hand-built fixtures may omit it. */
+  usage?: ComponentUsage;
 }
 
 export interface ScanFailure {

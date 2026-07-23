@@ -1,10 +1,16 @@
 import type { AtomicLevel, ComponentKind } from '../../api/types.js';
 import { KIND_LABEL, RANKS, RANK_ORDER } from '../../lib/taxonomy.js';
-import { toggle, type FilterState } from '../../lib/filter.js';
+import { toggle, type FilterState, type SortOrder } from '../../lib/filter.js';
 import type { DirectoryFacet } from '../../lib/source-area.js';
 import styles from './Filters.module.css';
 
 const KINDS: ComponentKind[] = ['presentational', 'container', 'layout'];
+
+/** Sort options, paired with the label the control shows for each. */
+const SORTS: { value: SortOrder; label: string }[] = [
+  { value: 'reliability', label: 'Most reliable' },
+  { value: 'mostUsed', label: 'Most used' },
+];
 
 /** Directories shown in the facet — the design-system-ish ones first, then the
  *  most populated, capped so the list stays scannable. */
@@ -88,6 +94,27 @@ export function Filters({
           </div>
         </fieldset>
       )}
+
+      <fieldset className={styles.group}>
+        <legend className="eyebrow">Sort by</legend>
+        <div className={styles.chips}>
+          {SORTS.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              className={styles.kind}
+              data-active={filters.sort === s.value}
+              aria-pressed={filters.sort === s.value}
+              onClick={() => set({ sort: s.value })}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {filters.sort === 'mostUsed' && (
+          <span className={styles.hint}>imports from scanned source; stories &amp; tests excluded</span>
+        )}
+      </fieldset>
 
       <fieldset className={styles.group}>
         <legend className="eyebrow">Atomic level</legend>

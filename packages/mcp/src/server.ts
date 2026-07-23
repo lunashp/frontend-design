@@ -161,7 +161,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
     {
       title: 'List components',
       description:
-        'List the scanned components, optionally filtered. Scans first if needed. Filters are AND-combined; nameIncludes, pathIncludes and propIncludes are separate so "buttons under src/ui" is expressible. Returns { scanned, total, offset, returned, nextOffset, truncated, components[] } — each row carries the opaque `id` used by get_portable_code and customize_component, its prop names, plus a `scoreBreakdown[]` ({ label, weight } terms that sum to contextDependencyScore, e.g. routing +2 / store subscription +3 / useAuth +1.5 — empty for a presentational atom), and the `hooks[]` and `contextConsumers[]` behind it so a component can be found by the hook or context it uses. ' +
+        'List the scanned components, optionally filtered. Scans first if needed. Filters are AND-combined; nameIncludes, pathIncludes and propIncludes are separate so "buttons under src/ui" is expressible. Returns { scanned, total, offset, returned, nextOffset, truncated, components[] } — each row carries the opaque `id` used by get_portable_code and customize_component, its prop names, plus a `scoreBreakdown[]` ({ label, weight } terms that sum to contextDependencyScore, e.g. routing +2 / store subscription +3 / useAuth +1.5 — empty for a presentational atom), and the `hooks[]` and `contextConsumers[]` behind it so a component can be found by the hook or context it uses. Each row also carries `usedByCount` (+ a bounded `usedByFiles[]`): how many OTHER scanned files import it — the most-imported member of a duplicate-name cluster is usually the canonical design component. usedByCount counts imports from ANALYZED SOURCE ONLY — story/test/spec files are excluded from the scan, so a component used only by Storybook stories reads 0; it is a rank/tie-break signal, never a reason to hide a component. Pass order:"mostUsed" to rank the rows by it. ' +
         `Returns at most ${DEFAULT_LIST_LIMIT} rows unless \`limit\` says otherwise; prefer narrowing the filter over paging.`,
       inputSchema: {
         projectPath: z.string().optional().describe('Target project root; falls back to launch default'),
@@ -186,6 +186,12 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
           .number()
           .optional()
           .describe('Keep only components at/below this context-dependency score (0 = most isolable)'),
+        order: z
+          .enum(['default', 'mostUsed'])
+          .optional()
+          .describe(
+            'Row order. "default" keeps discovery (name) order; "mostUsed" ranks by usedByCount desc (imports from analyzed source; stories/tests excluded) — the canonical member of a duplicate-name cluster leads',
+          ),
         offset: z.number().int().min(0).optional().describe('Rows to skip; pass back the `nextOffset` of the previous call'),
         limit: z
           .number()
@@ -210,6 +216,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
               maxContextDependencyScore: args.maxContextDependencyScore,
             },
             { offset: args.offset, limit: args.limit },
+            args.order ?? 'default',
           ),
         );
       } catch (err) {

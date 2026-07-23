@@ -109,6 +109,24 @@ describe('createMcpServer', () => {
     await close();
   });
 
+  it('documents the usedByCount reuse signal, its stories/tests caveat, and the order arg', async () => {
+    const { client, close } = await connect();
+
+    const { tools } = await client.listTools();
+    const list = tools.find((t) => t.name === 'list_components');
+    const keys = Object.keys((list?.inputSchema.properties ?? {}) as Record<string, unknown>);
+    // The usage ordering knob must be advertised.
+    expect(keys).toContain('order');
+
+    const desc = String(list?.description ?? '');
+    expect(desc).toContain('usedByCount');
+    // The honesty caveat must travel with the field, not just live in code.
+    expect(desc.toLowerCase()).toContain('stories');
+    expect(desc).toContain('mostUsed');
+
+    await close();
+  });
+
   it('enumerates every legal design-override field in the customize description', async () => {
     const { client, close } = await connect();
 
