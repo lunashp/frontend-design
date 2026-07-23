@@ -52,7 +52,8 @@
 }
 
 .rank,
-.kind {
+.kind,
+.dir {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -68,9 +69,36 @@
     background var(--dur) var(--ease);
 }
 .rank:hover,
-.kind:hover {
+.kind:hover,
+.dir:hover {
   border-color: var(--line-strong);
   color: var(--text);
+}
+
+/* The count sits in a subdued pill so the folder name stays the readable part. */
+.dirCount {
+  font-size: var(--text-xs);
+  color: var(--text-faint, var(--text-dim));
+  background: color-mix(in oklch, var(--text) 6%, transparent);
+  border-radius: var(--radius-chip);
+  padding: 0 6px;
+  line-height: 1.5;
+}
+
+/* A design-system folder is the one you most likely want — mark it so it reads
+   as the recommended place to look, without hiding the others. */
+.dir[data-area='design-system'] {
+  border-color: color-mix(in oklch, var(--accent) 24%, var(--line));
+}
+
+.dir[data-active='true'] {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 32%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.dir[data-active='true'] .dirCount {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
 }
 
 .rankDot {

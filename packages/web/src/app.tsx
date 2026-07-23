@@ -10,6 +10,7 @@ import { ScanIssues } from './features/gallery/ScanIssues.js';
 import { GalleryGrid } from './features/gallery/GalleryGrid.js';
 import { Inspector, type Tab } from './features/inspector/Inspector.js';
 import { applyFilters, DEFAULT_FILTERS, type FilterState } from './lib/filter.js';
+import { directoryFacets } from './lib/source-area.js';
 import {
   getCustomization,
   setCustomization,
@@ -104,8 +105,13 @@ export function App() {
       })
     : null;
   const filtered = useMemo(
-    () => (result ? applyFilters(result.components, filters) : []),
+    () => (result ? applyFilters(result.components, filters, result.projectRoot) : []),
     [result, filters],
+  );
+  // The project's own directories, offered as a precise "show me shared/ui" facet.
+  const facets = useMemo(
+    () => (result ? directoryFacets(result.components, result.projectRoot) : []),
+    [result],
   );
   const selected = result?.components.find((c) => c.descriptor.id === selectedId) ?? null;
 
@@ -180,7 +186,7 @@ export function App() {
 
       <aside className={styles.sidebar}>
         <ScanForm controller={scan} />
-        {result && <Filters filters={filters} onChange={setFilters} />}
+        {result && <Filters filters={filters} onChange={setFilters} facets={facets} />}
       </aside>
 
       <main className={styles.main}>

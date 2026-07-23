@@ -51,6 +51,48 @@ describe('applyFilters — designOnly (hide pages)', () => {
   });
 });
 
+// The real noise on a scan is not pages by name — it's icons, page-widgets filed
+// under views/, and style wrappers, none caught by the atomic-level regex.
+describe('applyFilters — designOnly (area-based noise, real-target shapes)', () => {
+  const NOISY: ComponentSummary[] = [
+    comp('Button', 'atom', { path: '/r/src/components/Button.tsx' }),
+    comp('ConfirmDialog', 'molecule', { path: '/r/src/components/dialogs/ConfirmDialog.tsx' }),
+    comp('ChevronRight', 'atom', { path: '/r/src/@menu/svg/ChevronRight.tsx' }), // icon
+    comp('APIUsageRatio', 'organism', { path: '/r/src/views/pages/dashboard/APIUsageRatio.tsx' }), // page-widget
+    comp('AppReactToastify', 'molecule', { path: '/r/src/libs/styles/AppReactToastify.tsx' }), // style wrapper
+    comp('AuthGuard', 'molecule', { path: '/r/src/hocs/AuthGuard.tsx' }), // infra
+  ];
+
+  it('keeps only the genuine design components, hiding icons/page-widgets/infra', () => {
+    const out = applyFilters(NOISY, DEFAULT_FILTERS, '/r');
+    expect(names(out).sort()).toEqual(['Button', 'ConfirmDialog']);
+  });
+
+  it('brings every one back when designOnly is off', () => {
+    const out = applyFilters(NOISY, { ...DEFAULT_FILTERS, designOnly: false }, '/r');
+    expect(out).toHaveLength(6);
+  });
+});
+
+describe('applyFilters — directory facet', () => {
+  const SET2: ComponentSummary[] = [
+    comp('Button', 'atom', { path: '/r/src/components/Button.tsx' }),
+    comp('Dialog', 'molecule', { path: '/r/src/components/dialogs/Dialog.tsx' }),
+    comp('Chip', 'atom', { path: '/r/src/@core/Chip.tsx' }),
+  ];
+
+  it('scopes to a directory and its descendants', () => {
+    const out = applyFilters(SET2, { ...DEFAULT_FILTERS, dir: 'src/components' }, '/r');
+    expect(names(out).sort()).toEqual(['Button', 'Dialog']); // Dialog is under components/dialogs
+    expect(names(out)).not.toContain('Chip');
+  });
+
+  it('an exact directory match includes the file directly in it', () => {
+    const out = applyFilters(SET2, { ...DEFAULT_FILTERS, dir: 'src/components/dialogs' }, '/r');
+    expect(names(out)).toEqual(['Dialog']);
+  });
+});
+
 describe('applyFilters — other axes', () => {
   it('rank filter includes only selected levels', () => {
     expect(names(applyFilters(SET, { ...DEFAULT_FILTERS, ranks: ['atom'] }))).toEqual(['Button']);
@@ -93,8 +135,11 @@ describe('applyFilters — query matches prop names', () => {
   });
 
   it('tolerates a component with no props', () => {
-    expect(names(applyFilters([comp('Icon', 'atom')], { ...DEFAULT_FILTERS, query: 'icon' }))).toEqual(
-      ['Icon'],
+    // `Badge`, not `Icon`: a name ending in "Icon" now reads as the icons area and
+    // is hidden by the default designOnly. This test is about prop-less query
+    // tolerance, so it uses a plain design component to isolate that.
+    expect(names(applyFilters([comp('Badge', 'atom')], { ...DEFAULT_FILTERS, query: 'badge' }))).toEqual(
+      ['Badge'],
     );
   });
 

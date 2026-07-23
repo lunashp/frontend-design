@@ -1,18 +1,34 @@
 import type { AtomicLevel, ComponentKind } from '../../api/types.js';
 import { KIND_LABEL, RANKS, RANK_ORDER } from '../../lib/taxonomy.js';
 import { toggle, type FilterState } from '../../lib/filter.js';
+import type { DirectoryFacet } from '../../lib/source-area.js';
 import styles from './Filters.module.css';
 
 const KINDS: ComponentKind[] = ['presentational', 'container', 'layout'];
 
+/** Directories shown in the facet — the design-system-ish ones first, then the
+ *  most populated, capped so the list stays scannable. */
+function facetOrder(facets: readonly DirectoryFacet[]): DirectoryFacet[] {
+  return [...facets]
+    .sort(
+      (a, b) =>
+        Number(b.area === 'design-system') - Number(a.area === 'design-system') ||
+        b.count - a.count,
+    )
+    .slice(0, 12);
+}
+
 export function Filters({
   filters,
   onChange,
+  facets,
 }: {
   filters: FilterState;
   onChange: (next: FilterState) => void;
+  facets: readonly DirectoryFacet[];
 }) {
   const set = (patch: Partial<FilterState>) => onChange({ ...filters, ...patch });
+  const dirs = facetOrder(facets);
 
   return (
     <div className={styles.filters}>
@@ -40,8 +56,38 @@ export function Filters({
           <span className={styles.thumb} />
         </span>
         Design components only
-        <span className={styles.hint}>hides full pages</span>
+        <span className={styles.hint}>hides icons, pages &amp; app plumbing</span>
       </button>
+
+      {dirs.length > 1 && (
+        <fieldset className={styles.group}>
+          <legend className="eyebrow">Folder</legend>
+          <div className={styles.chips}>
+            <button
+              type="button"
+              className={styles.dir}
+              data-active={filters.dir === null}
+              onClick={() => set({ dir: null })}
+            >
+              All
+            </button>
+            {dirs.map((f) => (
+              <button
+                key={f.dir}
+                type="button"
+                className={styles.dir}
+                data-active={filters.dir === f.dir}
+                data-area={f.area}
+                title={`${f.dir} · ${f.count}`}
+                onClick={() => set({ dir: filters.dir === f.dir ? null : f.dir })}
+              >
+                {f.dir.split('/').slice(-1)[0] || f.dir}
+                <span className={styles.dirCount}>{f.count}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <fieldset className={styles.group}>
         <legend className="eyebrow">Atomic level</legend>
