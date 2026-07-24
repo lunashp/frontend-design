@@ -247,6 +247,28 @@
   color: var(--text-dim);
 }
 
+/* Preview couldn't apply an edit. A recessed amber plane (the aside pattern),
+   not a red alarm: the preview still renders, this one edit just didn't take. */
+.previewWarn {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--aside-line-warn);
+  border-radius: var(--radius-input);
+  background: var(--aside-bg-warn);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.previewWarn strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: var(--space-1);
+}
+.previewWarn ul {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
 .tokenName {
   font-size: var(--text-sm);
   color: var(--text-dim);

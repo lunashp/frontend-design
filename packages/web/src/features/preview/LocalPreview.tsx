@@ -22,6 +22,7 @@ export function LocalPreview({
   designOverrides,
   propOverrides,
   previewState,
+  onWarnings,
   backing,
 }: {
   projectRoot: string;
@@ -35,6 +36,12 @@ export function LocalPreview({
    * non-focusable root can't receive. null/omitted = the resting state.
    */
   previewState?: DesignState | null;
+  /**
+   * Receives degraded-merge warnings the preview posts up (e.g. a prop edit that
+   * couldn't be applied), so the pane can surface them. Called with `[]` when a
+   * fresh build starts, so stale warnings clear.
+   */
+  onWarnings?: (messages: string[]) => void;
   /**
    * Stage backing behind the iframe. Optional so existing callers (Customize)
    * keep the neutral checkerboard; omitting it renders no `data-backing`, which
@@ -77,6 +84,30 @@ export function LocalPreview({
     el?.addEventListener('load', post);
     return () => el?.removeEventListener('load', post);
   }, [tokensJson, designJson, previewState, src]);
+
+  // A new preview build is starting — clear any stale warnings from the last one.
+  // The preview posts fresh warnings (if any) after it loads; a clean rebuild
+  // sends none, so without this reset an old warning would linger.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the preview NAVIGATES (src), not on every token/design tweak.
+  useEffect(() => {
+    onWarnings?.([]);
+  }, [src]);
+
+  // The preview posts degraded-merge warnings (a prop edit that couldn't be
+  // spliced) up to here — surface them in the UI, where the user looking at a
+  // wrong-looking preview actually is, not only in the iframe console.
+  useEffect(() => {
+    if (!onWarnings) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data as { type?: string; messages?: unknown } | null;
+      if (data?.type === 'ce:preview-warnings' && Array.isArray(data.messages)) {
+        onWarnings(data.messages.filter((m): m is string => typeof m === 'string'));
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [onWarnings]);
 
   return (
     <div className={styles.stage} data-backing={backing}>

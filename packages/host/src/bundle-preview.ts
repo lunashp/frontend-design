@@ -197,12 +197,16 @@ export async function renderPreviewHtml(input: PreviewInput): Promise<string> {
       .map((f) => f.text)
       .join('\n');
 
-    // A degraded merge must be visible, not silent: it also reaches the host
-    // through `onWarning`, but the iframe console is where a user looking at a
-    // wrong-looking preview actually looks.
+    // A degraded merge must be visible, not silent. It reaches the host through
+    // `onWarning` and the iframe console, but the person looking at a wrong-looking
+    // preview is in the WEB UI — so also post the warnings up to the embedder,
+    // which surfaces them beside the Customize preview (the same parent bridge the
+    // keyboard forwarding uses). Addressed to this document's own origin, never
+    // '*', so a hostile framing page can't read it.
     const warningScript = warnings.length
       ? `<script>${escapeForScript(
-          warnings.map((w) => `console.warn(${JSON.stringify(`[component-explorer] ${w}`)});`).join('\n'),
+          `${warnings.map((w) => `console.warn(${JSON.stringify(`[component-explorer] ${w}`)});`).join('\n')}\n` +
+            `try{parent.postMessage({type:'ce:preview-warnings',messages:${JSON.stringify(warnings)}},location.protocol+'//'+location.host);}catch(e){}`,
         )}</script>\n`
       : '';
 

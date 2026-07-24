@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentArtifact } from '../../api/types.js';
 import { CopyButton } from '../../components/ui/CopyButton.js';
 import {
@@ -53,6 +53,12 @@ export function CustomizePane({
   // the preview so a Hover/Focus/Active edit is seen without hovering/focusing —
   // which a non-focusable root can't receive. null = resting.
   const [previewState, setPreviewState] = useState<DesignState | null>(null);
+
+  // Warnings the preview posts up (e.g. a prop edit that couldn't be spliced into
+  // the entry). Surfaced beside the preview — previously these reached only the
+  // iframe console, so an edit that didn't take had no UI-level explanation.
+  const [previewWarnings, setPreviewWarnings] = useState<readonly string[]>([]);
+  const onWarnings = useCallback((messages: string[]) => setPreviewWarnings(messages), []);
 
   const tokens = artifact.tokenModel.tokens;
   // Derived tokens are mined from the app's TS theme and are a reference + copy
@@ -127,7 +133,21 @@ export function CustomizePane({
           designOverrides={design}
           propOverrides={debouncedProps}
           previewState={previewState}
+          onWarnings={onWarnings}
         />
+      )}
+
+      {previewWarnings.length > 0 && (
+        // A prop edit the engine couldn't apply. An aside (not a red alarm): the
+        // preview still renders, this one edit just didn't take.
+        <div className={styles.previewWarn} role="status">
+          <strong>Some edits couldn’t be applied to this preview.</strong>
+          <ul>
+            {previewWarnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <PresetBar
