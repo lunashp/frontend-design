@@ -6,11 +6,45 @@
 
 /* Scan-level findings read as marginalia beside the catalogue, not as an alert:
    they qualify the numbers rather than demand action. */
+/* Compact, muted, collapsed by default — a diagnostic note, not an alarm. */
+.noteDisclosure {
+  font-size: var(--text-sm);
+}
+.noteSummary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-dim);
+}
+.noteSummary::-webkit-details-marker {
+  display: none;
+}
+.noteCount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: color-mix(in oklch, var(--warn) 16%, transparent);
+  border-radius: var(--radius-chip);
+  padding: 0 7px;
+}
+/* The headlines preview inline (truncated) so the reader gets the gist without
+   expanding, but it never wraps into a block. */
+.noteHeadlines {
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
 .notes {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin: 0;
+  margin: var(--space-2) 0 0;
   padding: 0 0 0 var(--space-4);
   list-style: none;
   border-left: 2px solid var(--warn);

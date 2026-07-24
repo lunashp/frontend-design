@@ -37,18 +37,27 @@ export function ScanIssues({
   return (
     <section className={styles.issues} aria-label="Scan issues">
       {notes.length > 0 && (
-        <ul className={styles.notes}>
-          {notes.map((note) => (
-            <li key={note.key} className={styles.note}>
-              {/* Headline first so the finding is scannable at a glance; the
-                  engine's full sentence follows because it states BOTH
-                  explanations — a real absence and a stale detector — and the
-                  panel must not editorialise it down to one. */}
-              <p className={styles.noteHeadline}>{note.headline}</p>
-              <p className={styles.noteBody}>{note.message}</p>
-            </li>
-          ))}
-        </ul>
+        // Collapsed by default: these are advisory heuristic diagnostics, not
+        // errors, and a prominent warning block on every scan reads as "something
+        // is wrong". One muted line the reader can expand for the detail.
+        <details className={styles.noteDisclosure}>
+          <summary className={styles.noteSummary}>
+            <span className={styles.noteCount}>{notes.length}</span>
+            <span>scan {notes.length === 1 ? 'note' : 'notes'}</span>
+            <span className={styles.noteHeadlines}>
+              {notes.map((n) => n.headline).join(' · ')}
+            </span>
+            <span className={styles.toggle} aria-hidden />
+          </summary>
+          <ul className={styles.notes}>
+            {notes.map((note) => (
+              <li key={note.key} className={styles.note}>
+                <p className={styles.noteHeadline}>{note.headline}</p>
+                <p className={styles.noteBody}>{note.message}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {view.total > 0 && (
