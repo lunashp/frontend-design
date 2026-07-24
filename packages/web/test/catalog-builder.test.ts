@@ -244,6 +244,41 @@ describe('buildCatalogHtml', () => {
   });
 });
 
+describe('buildCatalogHtml — thumbnails', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+  const withThumbs = buildCatalogHtml({
+    ...source(SAMPLE),
+    thumbnails: new Map([['a', PNG]]), // only Button (id 'a') has one
+  });
+
+  it('inlines a captured thumbnail as an <img> data URI', () => {
+    expect(withThumbs).toContain(`<img class="tile tile-img" src="${PNG}"`);
+  });
+
+  it('keeps the monogram tile for a component without a thumbnail', () => {
+    // Card (id 'b') has no thumbnail → its monogram "CA" tile survives.
+    expect(withThumbs).toContain('class="tile lvl-molecule"');
+  });
+
+  it('stays self-contained — a data URI is not an external request', () => {
+    expect(withThumbs).not.toMatch(/https?:\/\//i);
+    expect(withThumbs).not.toMatch(/<link\b/i);
+  });
+
+  it('attaches the thumbnail to the RIGHT row (by id, in the model)', () => {
+    const model = buildCatalogModel(SAMPLE, {
+      projectRoot: ROOT,
+      framework: 'React',
+      totalCount: SAMPLE.length,
+      generatedAt: FIXED,
+      thumbnails: new Map([['b', PNG]]),
+    });
+    const rows = model.groups.flatMap((g) => g.rows);
+    expect(rows.find((r) => r.name === 'Card')?.thumbnail).toBe(PNG);
+    expect(rows.find((r) => r.name === 'Button')?.thumbnail).toBeUndefined();
+  });
+});
+
 describe('catalogFileName', () => {
   it('builds a dated, project-scoped filename', () => {
     expect(catalogFileName('my-app', FIXED)).toBe('component-catalog-my-app-2026-07-23.html');

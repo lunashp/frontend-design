@@ -33,6 +33,9 @@ export interface CatalogRow {
   readonly propCount: number;
   /** A bounded sample of prop names for the summary column. */
   readonly propSample: readonly string[];
+  /** A rendered-thumbnail data URI, when one was captured at export time. The
+   *  catalog is a static file, so the image is inlined; absent → monogram tile. */
+  readonly thumbnail?: string;
 }
 
 /** Components sharing a directory — the author's own structure, as a section. */
@@ -75,6 +78,9 @@ export interface CatalogModelOptions {
   readonly generatedAt: Date;
   /** How many prop names to surface per row. Default 4. */
   readonly propSampleLimit?: number;
+  /** Rendered-thumbnail data URIs by component id, inlined into each row. Absent
+   *  ids fall back to the monogram tile — so a partial capture still exports. */
+  readonly thumbnails?: ReadonlyMap<string, string>;
 }
 
 const DEFAULT_PROP_SAMPLE = 4;
@@ -98,8 +104,14 @@ export function formatTimestamp(date: Date): string {
   return `${day} ${time} UTC`;
 }
 
-function toRow(c: ComponentSummary, projectRoot: string, sampleLimit: number): CatalogRow {
+function toRow(
+  c: ComponentSummary,
+  projectRoot: string,
+  sampleLimit: number,
+  thumbnails?: ReadonlyMap<string, string>,
+): CatalogRow {
   const props = c.propModel.props;
+  const thumbnail = thumbnails?.get(c.descriptor.id);
   return {
     name: c.descriptor.name,
     exportName: c.descriptor.exportName,
@@ -111,6 +123,7 @@ function toRow(c: ComponentSummary, projectRoot: string, sampleLimit: number): C
     contextScore: c.classification.contextDependencyScore,
     propCount: props.length,
     propSample: props.slice(0, sampleLimit).map((p) => p.name),
+    ...(thumbnail ? { thumbnail } : {}),
   };
 }
 
@@ -161,7 +174,7 @@ export function buildCatalogModel(
   opts: CatalogModelOptions,
 ): CatalogModel {
   const sampleLimit = opts.propSampleLimit ?? DEFAULT_PROP_SAMPLE;
-  const rows = components.map((c) => toRow(c, opts.projectRoot, sampleLimit));
+  const rows = components.map((c) => toRow(c, opts.projectRoot, sampleLimit, opts.thumbnails));
   return {
     projectName: projectNameFromRoot(opts.projectRoot),
     framework: opts.framework,

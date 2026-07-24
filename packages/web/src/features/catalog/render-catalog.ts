@@ -69,10 +69,15 @@ function renderRow(row: CatalogRow, maxUsed: number): string {
     row.exportName !== row.name
       ? `<span class="export">as ${escapeHtml(row.exportName)}</span>`
       : '';
+  // A rendered thumbnail if one was captured, else the monogram tile — same box,
+  // so the row height is identical either way and a partial capture reads cleanly.
+  const tile = row.thumbnail
+    ? `<img class="tile tile-img" src="${escapeHtml(row.thumbnail)}" alt="" loading="lazy" />`
+    : `<span class="tile lvl-${row.atomicLevel}" aria-hidden="true">${escapeHtml(monogram(row.name))}</span>`;
   return [
     `<tr class="row" data-search="${search}" data-name="${escapeHtml(row.name.toLowerCase())}" data-used="${row.usedByCount}">`,
     '<td class="c-name">',
-    `<span class="tile lvl-${row.atomicLevel}" aria-hidden="true">${escapeHtml(monogram(row.name))}</span>`,
+    tile,
     '<span class="name-wrap">',
     `<span class="name">${escapeHtml(row.name)}</span>`,
     exportBadge,
@@ -202,6 +207,7 @@ tbody tr:hover td{background:var(--surface-2);}
 .tile{display:inline-grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:8px;
   margin-right:.6rem;font-family:var(--mono);font-size:.72rem;font-weight:700;color:#fff;
   background:var(--c);vertical-align:middle;}
+.tile-img{object-fit:contain;background:var(--surface-2);border:1px solid var(--line);padding:2px;}
 .name-wrap{display:inline-flex;flex-direction:column;vertical-align:middle;}
 .name{font-weight:650;}
 .export{font-size:.72rem;color:var(--text-faint);font-family:var(--mono);}

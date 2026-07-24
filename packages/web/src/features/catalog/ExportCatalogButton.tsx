@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import type { ComponentSummary } from '../../api/types.js';
 import { buildCatalogHtml, catalogFileNameForRoot } from './build-catalog.js';
+import { captureThumbnails } from './capture-thumbnails.js';
 import { downloadHtml } from './download-html.js';
 import styles from './ExportCatalogButton.module.css';
 
@@ -15,6 +16,11 @@ import styles from './ExportCatalogButton.module.css';
  * WHY the shown set, not all: exporting exactly what is on screen (after the
  * filters/search) is the least surprising — "share what I'm looking at". The
  * full scanned design count still rides along in the header as "N of M" context.
+ *
+ * Thumbnails are captured (as inline data URIs) before the HTML is built, so the
+ * shared file SHOWS each component instead of a monogram. That is a network step,
+ * so the click is async with a progress label; a component without a thumbnail
+ * (code-only) just keeps its monogram, and a capture is never fatal.
  */
 export function ExportCatalogButton({
   components,
@@ -29,17 +35,30 @@ export function ExportCatalogButton({
   /** Full scanned design set, for the header's "showing N of M" line. */
   totalComponents: number;
 }) {
-  const onClick = useCallback(() => {
-    const now = new Date();
-    const html = buildCatalogHtml({
-      projectRoot,
-      framework,
-      components,
-      totalComponents,
-      generatedAt: now,
-    });
-    downloadHtml(catalogFileNameForRoot(projectRoot, now), html);
-  }, [components, projectRoot, framework, totalComponents]);
+  // null = idle; a number = capturing, that many thumbnails done so far.
+  const [captured, setCaptured] = useState<number | null>(null);
+  const busy = captured !== null;
+
+  const onClick = useCallback(async () => {
+    if (busy) return;
+    setCaptured(0);
+    try {
+      const ids = components.map((c) => c.descriptor.id);
+      const thumbnails = await captureThumbnails(projectRoot, ids, (done) => setCaptured(done));
+      const now = new Date();
+      const html = buildCatalogHtml({
+        projectRoot,
+        framework,
+        components,
+        totalComponents,
+        generatedAt: now,
+        thumbnails,
+      });
+      downloadHtml(catalogFileNameForRoot(projectRoot, now), html);
+    } finally {
+      setCaptured(null);
+    }
+  }, [busy, components, projectRoot, framework, totalComponents]);
 
   const empty = components.length === 0;
   const label = empty
@@ -51,14 +70,15 @@ export function ExportCatalogButton({
       type="button"
       className={styles.button}
       onClick={onClick}
-      disabled={empty}
+      disabled={empty || busy}
       aria-label={label}
       title={label}
+      aria-busy={busy}
     >
       <span className={styles.icon} aria-hidden>
         ↥
       </span>
-      Export
+      {busy ? `Capturing… ${captured}/${components.length}` : 'Export'}
     </button>
   );
 }

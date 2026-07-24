@@ -23,6 +23,9 @@ export interface CatalogSource {
   readonly generatedAt?: Date;
   /** Prop names sampled per row. Default 4. */
   readonly propSampleLimit?: number;
+  /** Rendered-thumbnail data URIs by component id, captured before the build.
+   *  Inlined into rows; ids without one fall back to the monogram tile. */
+  readonly thumbnails?: ReadonlyMap<string, string>;
 }
 
 /** Build the complete, self-contained catalog HTML document. Pure. */
@@ -33,6 +36,7 @@ export function buildCatalogHtml(source: CatalogSource): string {
     totalCount: source.totalComponents,
     generatedAt: source.generatedAt ?? new Date(),
     propSampleLimit: source.propSampleLimit,
+    thumbnails: source.thumbnails,
   });
   return renderCatalogHtml(model);
 }
