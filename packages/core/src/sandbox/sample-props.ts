@@ -72,7 +72,14 @@ const COMPONENT_TYPE = /\b(ComponentType|ElementType|FunctionComponent|Component
  *   Deeply-nested access (`d.user.name`, `d.count.toLocaleString()`) can still
  *   throw — that shape can't be invented without the real data.
  */
-function valueForUnknown(prop: PropControl): unknown | typeof SKIP {
+/**
+ * Resolves a nested sample value for an object prop by name, from its actual
+ * TypeScript type (see synthesize-props.ts). Optional: absent (e.g. the MCP path,
+ * which has no ts-morph project handy), a required object simply gets `{}`.
+ */
+export type ObjectSampleResolver = (propName: string) => unknown | undefined;
+
+function valueForUnknown(prop: PropControl, resolveObject?: ObjectSampleResolver): unknown | typeof SKIP {
   const tsType = prop.tsType.trim();
   // FUNCTION FIRST: a function signature can mention `Date` or `[]` in its
   // params/return (`(d: Date) => boolean`, `(x) => Foo[]`), which would else be
@@ -84,7 +91,11 @@ function valueForUnknown(prop: PropControl): unknown | typeof SKIP {
   if (!prop.required) return SKIP;
   if (STRING_MEMBER.test(tsType)) return humanize(prop.name);
   if (COMPONENT_TYPE.test(tsType)) return SKIP;
-  return {};
+  // A required data object. `{}` stops a shallow read but a NESTED access
+  // (`row.items.map()`, `d.count.toLocaleString()`) still throws — so synthesize
+  // the object's real shape from its type when we can, and fall back to `{}`.
+  const synthesized = resolveObject?.(prop.name);
+  return synthesized !== undefined ? synthesized : {};
 }
 
 function valueForPropKind(prop: PropControl, descriptor: ComponentDescriptor): unknown {
@@ -109,6 +120,7 @@ function valueForPropKind(prop: PropControl, descriptor: ComponentDescriptor): u
 export function generateSampleProps(
   propModel: PropModel,
   descriptor: ComponentDescriptor,
+  resolveObject?: ObjectSampleResolver,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
@@ -118,7 +130,7 @@ export function generateSampleProps(
       // maps/dereferences a prop it assumes is passed regardless of the `?`.
       // Objects/strings stay required-only. Functions are stubbed by the entry
       // builder (JSON can't carry them), so they SKIP here.
-      const value = valueForUnknown(prop);
+      const value = valueForUnknown(prop, resolveObject);
       if (value !== SKIP) out[prop.name] = value;
       continue;
     }

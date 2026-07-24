@@ -29,6 +29,7 @@ import { tokenizeBundle, TOKENS_CSS_PATH } from '../tokenize/tokenization-transf
 import { mineThemeTokens, type ThemeMiningResult } from '../theme/theme-extractor.js';
 import type { TokenModel } from '../types/token-model.js';
 import { generateSampleProps } from '../sandbox/sample-props.js';
+import { buildObjectSampleResolver } from '../sandbox/synthesize-props.js';
 import { scaffoldSandbox } from '../sandbox/sandbox-scaffolder.js';
 import type { PortableBundle } from '../types/portable-bundle.js';
 import { UnsupportedFrameworkError, ComponentNotFoundError, EngineError } from '../util/errors.js';
@@ -240,7 +241,20 @@ export class EngineSession {
     // only appends to the token model, so a plain-CSS target is unaffected.
     const tokenModel = this.withDerivedTokens(tok.tokenModel);
 
-    const sampleProps = generateSampleProps(summary.propModel, summary.descriptor);
+    // Resolve required object props' real shapes from their TS types, so a
+    // component reading nested data (`row.items.map()`) renders instead of
+    // throwing. Backed by the ts-morph project we already hold here.
+    const resolveObjectSample = buildObjectSampleResolver(
+      tsProject,
+      summary.descriptor.filePath,
+      summary.descriptor.exportName,
+      summary.descriptor.name,
+    );
+    const sampleProps = generateSampleProps(
+      summary.propModel,
+      summary.descriptor,
+      resolveObjectSample,
+    );
     const providers = this.adapter.generateProviderStubs(
       summary.descriptor,
       this.program,

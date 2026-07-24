@@ -14,9 +14,17 @@ const FUNCTION_TYPE = /=>|\bFunction\b/;
 
 /** A prop value as a JS literal. JSON.stringify covers primitives/arrays/objects,
  *  but flattens a `Date` to a quoted string — so a component calling `date.getX()`
- *  would still throw. Emit those as a real `new Date(...)` instead. */
+ *  would still throw. Recurse so a `Date` at ANY depth (a synthesized object's
+ *  nested field) is emitted as a real `new Date(...)`. */
 function serializeValue(v: unknown): string {
   if (v instanceof Date) return `new Date(${JSON.stringify(v.toISOString())})`;
+  if (Array.isArray(v)) return `[${v.map(serializeValue).join(', ')}]`;
+  if (v !== null && typeof v === 'object') {
+    const entries = Object.entries(v).map(
+      ([k, val]) => `${JSON.stringify(k)}: ${serializeValue(val)}`,
+    );
+    return `{ ${entries.join(', ')} }`;
+  }
   return JSON.stringify(v);
 }
 
