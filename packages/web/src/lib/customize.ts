@@ -7,7 +7,7 @@
  */
 
 import type { Token } from '../api/types.js';
-import { emitDesignStyleSheet } from './design-overrides.js';
+import { emitDesignBlocks, emitDesignStyleSheet, type DesignState } from './design-overrides.js';
 
 export interface CustomizationState {
   tokenOverrides: Record<string, string>;
@@ -132,6 +132,20 @@ export interface PreviewDesignMessage {
 }
 
 /**
+ * A FORCED rule that paints one interactive state on the resting selector, so
+ * the preview shows it without the user hovering/focusing/clicking the element —
+ * which a non-focusable root (a wrapper `<div>`) can't even receive, so its Focus
+ * overrides would otherwise look inert while being edited. Returns '' when the
+ * state paints nothing. The shipped `:hover`/`:focus-visible`/`:active` rules are
+ * unaffected; this is preview-only, keyed to the tab the user is editing.
+ */
+function forcedStateSheet(overrides: Readonly<Record<string, string>>, state: DesignState): string {
+  const block = emitDesignBlocks(overrides).find((b) => b.state === state);
+  if (!block || block.declarations.length === 0) return '';
+  return `#root > * { ${block.declarations.join('; ')}; }`;
+}
+
+/**
  * Design overrides as a whole stylesheet.
  *
  * The host also accepts a legacy `css` field, but it splices that into
@@ -139,9 +153,16 @@ export interface PreviewDesignMessage {
  * way repaints the resting state instead of the hover one. Only a full sheet
  * can express `:hover` / `:focus-visible` / `:active`, so that is all we send.
  * An empty sheet is meaningful: it clears the override layer.
+ *
+ * `previewState` (the interactive-state tab the user is editing) forces that
+ * state visible in the preview — see `forcedStateSheet`. `null`/resting sends
+ * just the real sheet.
  */
 export function previewDesignMessage(
   overrides: Readonly<Record<string, string>> = {},
+  previewState: DesignState | null = null,
 ): PreviewDesignMessage {
-  return { type: 'ce:design', sheet: emitDesignStyleSheet(overrides) };
+  const sheet = emitDesignStyleSheet(overrides);
+  const forced = previewState ? forcedStateSheet(overrides, previewState) : '';
+  return { type: 'ce:design', sheet: forced ? `${sheet}\n${forced}` : sheet };
 }

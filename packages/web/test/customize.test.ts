@@ -287,6 +287,30 @@ describe('previewDesignMessage (what the preview iframe is actually told)', () =
     expect(previewDesignMessage({}).sheet).toBe('');
     expect(previewDesignMessage(undefined).sheet).toBe('');
   });
+
+  it('FORCES the edited state onto the resting selector so it previews without interaction', () => {
+    // Focus on a wrapper-div root can never be triggered by the user, so its
+    // override would look inert. Editing the Focus tab forces it visible.
+    const msg = previewDesignMessage({ 'focus:color': '#00f' }, 'focus');
+    // The real :focus-visible rule is still there (what the copied CSS ships)…
+    expect(msg.sheet).toContain('#root > *:focus-visible { color: #00f !important; }');
+    // …plus a forced resting rule so the preview shows it right now.
+    expect(msg.sheet).toContain('#root > * { color: #00f !important; }');
+  });
+
+  it('does not force anything on the resting tab', () => {
+    const msg = previewDesignMessage({ 'hover:background': '#000' }, null);
+    // Only the real :hover rule — no forced resting duplicate of it.
+    expect(msg.sheet).toContain('#root > *:hover { background: #000');
+    expect(msg.sheet).not.toMatch(/#root > \* \{ background: #000/);
+  });
+
+  it('forces nothing when the edited state paints nothing', () => {
+    // On the Hover tab but no hover override set → no forced rule appears.
+    expect(previewDesignMessage({ background: '#fff' }, 'hover').sheet).toBe(
+      '#root > * { background: #fff !important; }',
+    );
+  });
 });
 
 describe('design state tabs', () => {

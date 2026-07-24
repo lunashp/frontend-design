@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { previewDesignMessage } from '../../lib/customize.js';
+import type { DesignState } from '../../lib/design-overrides.js';
 import type { PreviewBacking } from './backing.js';
 import styles from './SandboxView.module.css';
 
@@ -20,6 +21,7 @@ export function LocalPreview({
   tokenOverrides,
   designOverrides,
   propOverrides,
+  previewState,
   backing,
 }: {
   projectRoot: string;
@@ -27,6 +29,12 @@ export function LocalPreview({
   tokenOverrides?: Readonly<Record<string, string>>;
   designOverrides?: Readonly<Record<string, string>>;
   propOverrides?: Readonly<Record<string, unknown>>;
+  /**
+   * The interactive-state tab being edited (hover/focus/active), forced visible
+   * in the preview so its overrides are seen without hovering/focusing — which a
+   * non-focusable root can't receive. null/omitted = the resting state.
+   */
+  previewState?: DesignState | null;
   /**
    * Stage backing behind the iframe. Optional so existing callers (Customize)
    * keep the neutral checkerboard; omitting it renders no `data-backing`, which
@@ -60,7 +68,7 @@ export function LocalPreview({
       if (!w) return;
       w.postMessage({ type: 'ce:tokens', tokens: JSON.parse(tokensJson) as Record<string, string> }, '*');
       w.postMessage(
-        previewDesignMessage(JSON.parse(designJson) as Record<string, string>),
+        previewDesignMessage(JSON.parse(designJson) as Record<string, string>, previewState ?? null),
         '*',
       );
     };
@@ -68,7 +76,7 @@ export function LocalPreview({
     const el = iframeRef.current;
     el?.addEventListener('load', post);
     return () => el?.removeEventListener('load', post);
-  }, [tokensJson, designJson, src]);
+  }, [tokensJson, designJson, previewState, src]);
 
   return (
     <div className={styles.stage} data-backing={backing}>

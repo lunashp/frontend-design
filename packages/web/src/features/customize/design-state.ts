@@ -111,14 +111,17 @@ export function statesWithOverrides(
 
 /**
  * Verified in headless Chromium: `:focus-visible` matches the focused element
- * itself and never propagates to an ancestor, so for any component whose root is
- * a wrapper `<div>` the focus overrides never apply. The tab is still offered —
- * it works for a focusable root — but it says so, because a control that
- * silently does nothing is worse than an absent one.
+ * itself and never propagates to an ancestor, so in the SHIPPED CSS a focus
+ * override only applies when the component's own root is focusable (a wrapper
+ * `<div>` never receives it). The preview sidesteps that — it FORCES the focus
+ * styling visible while the tab is being edited, so the controls are never inert
+ * — but the caveat stays, honestly, about where the copied CSS will and won't
+ * take effect in the user's app.
  */
 export const FOCUS_ROOT_CAVEAT =
-  'Only applies when the component’s own root element is focusable (a button, input, or link). ' +
-  ':focus-visible does not reach a wrapper element around it.';
+  'Shown forced here so you can style it. In your app it applies only when the ' +
+  'component’s own root is focusable (a button, input, or link) — :focus-visible ' +
+  'does not reach a wrapper element around it.';
 
 /** The caveat a state carries, or null when it behaves exactly as advertised. */
 export function designStateCaveat(state: DesignState | null): string | null {

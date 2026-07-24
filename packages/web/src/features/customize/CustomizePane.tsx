@@ -10,6 +10,7 @@ import {
   type CustomizationState,
 } from '../../lib/customize.js';
 import { emitDesignRule, emitDesignStyleObject } from '../../lib/design-overrides.js';
+import type { DesignState } from '../../lib/design-overrides.js';
 import type { Preset } from '../../lib/presets.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
@@ -47,6 +48,11 @@ export function CustomizePane({
     const t = setTimeout(() => setDebouncedProps(state.propValues), 400);
     return () => clearTimeout(t);
   }, [state.propValues]);
+
+  // The interactive-state tab the Design controls are editing, forced visible in
+  // the preview so a Hover/Focus/Active edit is seen without hovering/focusing —
+  // which a non-focusable root can't receive. null = resting.
+  const [previewState, setPreviewState] = useState<DesignState | null>(null);
 
   const tokens = artifact.tokenModel.tokens;
   // Derived tokens are mined from the app's TS theme and are a reference + copy
@@ -120,6 +126,7 @@ export function CustomizePane({
           tokenOverrides={tokenOverrides}
           designOverrides={design}
           propOverrides={debouncedProps}
+          previewState={previewState}
         />
       )}
 
@@ -138,7 +145,7 @@ export function CustomizePane({
           <span className="eyebrow">Design</span>
           <span className={styles.sectionNote}>applies to the component · any component</span>
         </div>
-        <DesignControls overrides={design} onChange={setDesign} />
+        <DesignControls overrides={design} onChange={setDesign} onStateChange={setPreviewState} />
       </section>
 
       {editableTokens.length > 0 ? (

@@ -111,11 +111,19 @@ function Field({
 export function DesignControls({
   overrides,
   onChange,
+  onStateChange,
 }: {
   overrides: Record<string, string>;
   onChange: (key: DesignOverrideKey, value: string) => void;
+  /** Reports the interactive-state tab being edited, so the preview can FORCE
+   *  that state visible (a non-focusable root can't be focused to reveal it). */
+  onStateChange?: (state: DesignState | null) => void;
 }) {
   const [state, setState] = useState<DesignState | null>(null);
+  const selectState = (next: DesignState | null) => {
+    setState(next);
+    onStateChange?.(next);
+  };
   const marked = statesWithOverrides(overrides);
   const caveat = designStateCaveat(state);
 
@@ -136,7 +144,7 @@ export function DesignControls({
               // an untouched one.
               aria-label={overridden ? `${tab.label} (has overrides)` : tab.label}
               title={tab.title}
-              onClick={() => setState(tab.state)}
+              onClick={() => selectState(tab.state)}
             >
               {tab.label}
               {overridden && <span className={styles.stateDot} aria-hidden="true" />}
