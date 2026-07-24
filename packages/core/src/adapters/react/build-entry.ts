@@ -12,22 +12,33 @@ function withoutExt(p: string): string {
 
 const FUNCTION_TYPE = /=>|\bFunction\b/;
 
+/** A prop value as a JS literal. JSON.stringify covers primitives/arrays/objects,
+ *  but flattens a `Date` to a quoted string — so a component calling `date.getX()`
+ *  would still throw. Emit those as a real `new Date(...)` instead. */
+function serializeValue(v: unknown): string {
+  if (v instanceof Date) return `new Date(${JSON.stringify(v.toISOString())})`;
+  return JSON.stringify(v);
+}
+
 /**
  * Serialize sample props to a JS object literal. JSON drops functions, so a
- * required function-typed prop (e.g. a `t(key)` translator or an `onX` handler
- * the component CALLS while rendering) is injected as a safe stub: it returns
- * its first string arg (so `t('a.b')` shows the key) else undefined. Without
- * this, calling an undefined `t` throws `t is not a function` at render.
+ * function-typed prop (a `t(key)` translator, an `onX` handler, or a RENDER PROP
+ * like `renderRow` the component CALLS while rendering) is injected as a safe
+ * stub: it returns its first string arg (so `t('a.b')` shows the key) else
+ * undefined. Both required AND optional function props are stubbed — a render
+ * prop the component invokes unconditionally throws `x is not a function` whether
+ * or not its type says `?`, and a stub is harmless for a genuine optional handler
+ * (it just does nothing).
  */
 function serializeProps(
   props: Readonly<Record<string, unknown>>,
   propModel: BuildEntryInput['propModel'],
 ): { code: string; needsStub: boolean } {
   const fnProps = propModel.props.filter(
-    (p) => p.required && FUNCTION_TYPE.test(p.tsType) && !(p.name in props),
+    (p) => FUNCTION_TYPE.test(p.tsType) && !(p.name in props),
   );
   const jsonEntries = Object.entries(props).map(
-    ([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`,
+    ([k, v]) => `  ${JSON.stringify(k)}: ${serializeValue(v)}`,
   );
   const fnEntries = fnProps.map((p) => `  ${JSON.stringify(p.name)}: __fnStub`);
   const all = [...jsonEntries, ...fnEntries];

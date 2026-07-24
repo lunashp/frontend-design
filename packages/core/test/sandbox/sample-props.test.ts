@@ -85,12 +85,66 @@ describe('generateSampleProps', () => {
     expect(out.map).toEqual({});
   });
 
-  it('does not fill OPTIONAL complex props (keep the component near its real defaults)', () => {
+  it('fills an OPTIONAL array with [] (safe) but leaves an optional object unset', () => {
+    // An empty array can never fabricate misleading content and it stops the
+    // common `undefined.map()` throw for a prop the component maps regardless of
+    // the `?`. An optional object keeps its real default (a synthetic {} would
+    // just move the throw one property deeper).
     const out = gen([
       prop({ name: 'extra', kind: 'unknown', tsType: 'Foo[]', required: false }),
       prop({ name: 'meta', kind: 'unknown', tsType: 'Meta', required: false }),
     ]);
-    expect(Object.keys(out)).toHaveLength(0);
+    expect(out.extra).toEqual([]);
+    expect('meta' in out).toBe(false);
+  });
+
+  it('fills a required OR optional Date-typed prop with a real Date', () => {
+    // `{}` here throws on the first date method (`date.getDate is not a function`).
+    const out = gen([
+      prop({ name: 'day', kind: 'unknown', tsType: 'Date', required: true }),
+      prop({ name: 'when', kind: 'unknown', tsType: 'Date | undefined', required: false }),
+    ]);
+    expect(out.day).toBeInstanceOf(Date);
+    expect(out.when).toBeInstanceOf(Date);
+    // A word-boundary match: `DateRange` / `MyDate` are NOT dates.
+    const notDate = gen([prop({ name: 'range', kind: 'unknown', tsType: 'DateRange', required: true })]);
+    expect(notDate.range).toEqual({});
+  });
+
+  it('leaves function-typed props to the entry builder (JSON can not carry a function)', () => {
+    // The entry builder injects a __fnStub for these; generateSampleProps must
+    // NOT put an undefined/`{}` in their place (that would shadow the stub).
+    const out = gen([
+      prop({ name: 'onChange', kind: 'unknown', tsType: '(v: string) => void', required: true }),
+      prop({ name: 'renderRow', kind: 'unknown', tsType: '(row: Row) => ReactNode', required: false }),
+    ]);
+    expect('onChange' in out).toBe(false);
+    expect('renderRow' in out).toBe(false);
+  });
+
+  it('does NOT read a Date/array mentioned in a function SIGNATURE as a data prop', () => {
+    // `(d: Date) => boolean` must be a stubbed function, not a Date value — else
+    // the component calls a Date and throws "isInRange is not a function".
+    const out = gen([
+      prop({ name: 'isInRange', kind: 'unknown', tsType: '(date: Date) => boolean', required: true }),
+      prop({ name: 'toList', kind: 'unknown', tsType: '(x: string) => Item[]', required: true }),
+    ]);
+    expect('isInRange' in out).toBe(false); // → __fnStub in the entry
+    expect('toList' in out).toBe(false);
+  });
+
+  it('skips a render-prop typed `node` (it is called, not rendered)', () => {
+    // `renderTags: (t) => ReactNode` is classified `node` by its RETURN type but
+    // is a function. Filling it with a string throws "renderTags is not a function".
+    const out = gen([
+      prop({ name: 'renderTags', kind: 'node', tsType: '(tags: Tag[]) => ReactNode', required: false }),
+    ]);
+    expect('renderTags' in out).toBe(false); // → __fnStub in the entry
+  });
+
+  it('fills a union array (`Foo[] | undefined`) with []', () => {
+    const out = gen([prop({ name: 'items', kind: 'unknown', tsType: 'Foo[] | undefined', required: false })]);
+    expect(out.items).toEqual([]);
   });
 
   // Regression: `string | React.ComponentType` (icon-style props) were filled

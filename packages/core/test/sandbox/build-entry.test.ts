@@ -68,6 +68,29 @@ describe('buildReactEntry', () => {
     expect(entry).toMatch(/"t": __fnStub/);
   });
 
+  it('stubs an OPTIONAL render-prop too (a component may call it unconditionally)', () => {
+    // `renderTags?: () => ReactNode` invoked at render throws "renderTags is not
+    // a function" whether or not its type says optional — stub it regardless.
+    const entry = entryFor(descriptor({}), {
+      props: [{ name: 'renderTags', tsType: '() => React.ReactNode', kind: 'unknown', required: false }],
+    });
+    expect(entry).toMatch(/"renderTags": __fnStub/);
+  });
+
+  it('serializes a Date sample prop as a real `new Date(...)`, not a quoted string', () => {
+    // JSON would flatten it to a string and `date.getDate()` would throw.
+    const input: BuildEntryInput = {
+      descriptor: descriptor({}),
+      bundle: { files: {}, entryPath: '/src/Card.tsx', externalDeps: {}, assets: [], warnings: [] },
+      sampleProps: { day: new Date('2025-01-15T12:00:00.000Z') },
+      providers: NO_PROVIDERS,
+      tokenCssPath: '/tokens.css',
+      propModel: { props: [] },
+    };
+    const entry = buildReactEntry(input);
+    expect(entry).toContain('"day": new Date("2025-01-15T12:00:00.000Z")');
+  });
+
   it('wraps the mount in an error boundary so a render throw shows a fallback, not a blank', () => {
     const entry = entryFor(descriptor({}));
     // A component that dereferences data it was not given throws at render;

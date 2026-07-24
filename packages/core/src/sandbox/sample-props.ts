@@ -16,8 +16,24 @@ function parseBool(value: string | undefined): boolean {
   return value === 'true';
 }
 
-const ARRAY_TYPE = /(\[\]\s*$)|(^(readonly\s+)?Array<)|(^ReadonlyArray<)/;
+// An array type, including union forms (`Foo[] | undefined`, `readonly Foo[] | null`).
+// `\[\]` followed by end-or-union — NOT `[])` inside a callback param, and
+// FUNCTION_TYPE is tested first anyway so a `(x) => Foo[]` never reaches this.
+const ARRAY_TYPE = /(\[\]\s*(\||$))|(^(readonly\s+)?Array<)|(^ReadonlyArray<)/;
 const FUNCTION_TYPE = /=>|\bFunction\b/;
+// A `Date`-typed prop, as a whole word so `DateRange` / `MyDate` don't match.
+// Given `{}` it throws on the first date method (`date.getDate is not a function`).
+const DATE_TYPE = /\bDate\b/;
+/**
+ * A fixed sample Date, so a component that calls date methods renders instead of
+ * throwing. Serialized to a real `new Date(...)` by the entry builder (JSON would
+ * flatten it to a string). Fixed rather than `new Date()` so previews and their
+ * cached thumbnails are deterministic.
+ */
+export const SAMPLE_DATE = new Date('2025-01-15T12:00:00.000Z');
+
+/** Sentinel: this prop should be left unset (keep its real default). */
+const SKIP = Symbol('skip');
 // `string` as a whole union member (`string`, `string | X`, `X | string`) —
 // NOT `string` buried inside `Record<string, …>` or `{ k: string }`.
 const STRING_MEMBER = /(^|\|)\s*string\s*(\||$)/;
@@ -30,31 +46,44 @@ const NODE_ACCEPTS_STRING = /ReactNode|ReactChild/;
 const COMPONENT_TYPE = /\b(ComponentType|ElementType|FunctionComponent|ComponentClass|ReactElement|SvgIconComponent)\b|\bFC\b|\bJSX\.Element\b/;
 
 /**
- * A value for a required prop the control model classified as `unknown` (an
- * object, array, function, or component). The component will dereference or
- * render it, so leaving a data prop `undefined` throws and the preview blanks.
+ * A value for a prop the control model classified as `unknown` (an object,
+ * array, function, Date, or component), or `SKIP` to leave it unset. The
+ * component dereferences or renders these while it mounts, so an undefined data
+ * prop throws and the preview blanks.
  *
- * Order matters:
- * - functions → `undefined` (JSON can't carry one; an unset handler is harmless
- *   at render — it only fires on interaction).
- * - arrays → `[]` so `.map`/`.length` are safe.
- * - a union that accepts `string` → a string. Safe for anything the component
- *   renders (text, an `<img src>`, an href) and, crucially, picks the string
- *   branch of icon-style props typed `string | ComponentType` — which as `{}`
- *   blow up on `React.createElement(prop)`.
- * - a component/element type → `undefined`. It can't be represented in JSON, and
- *   a `{}` stub renders as an invalid element; unset at least fails a truthiness
- *   guard cleanly instead of throwing an object-as-element error.
+ * The SAFE-for-any-prop fills go first and apply whether the prop is required or
+ * optional — a value that only ever prevents a crash and never fabricates
+ * misleading content:
+ * - arrays → `[]` so `.map`/`.length`/spread are safe (an empty list renders
+ *   nothing). This covers OPTIONAL arrays too: a component that maps a prop it
+ *   assumes is passed throws on `undefined.map()` even when the type says `?`.
+ * - `Date` → a fixed sample date, so `date.getDate()` and friends work.
+ * - functions → `SKIP` here: JSON can't carry a function, so the ENTRY builder
+ *   injects a stub for them instead (build-entry.ts). Handled there, not here.
+ *
+ * The remaining fills are for REQUIRED props only — an optional object/string
+ * keeps its real default rather than being masked by a synthetic `{}`:
+ * - a union that accepts `string` → a string. Safe for text, an `<img src>`, an
+ *   href, and it picks the string branch of an icon-style `string | ComponentType`
+ *   (which as `{}` blows up on `React.createElement`).
+ * - a component/element type → `SKIP` (no JSON form; a `{}` renders as an invalid
+ *   element — unset at least fails a truthiness guard cleanly).
  * - everything else (real data objects) → `{}` so a shallow read is `undefined`.
- *   Deeply-nested access (`d.user.name`) can still throw — that shape can't be
- *   invented without the real data.
+ *   Deeply-nested access (`d.user.name`, `d.count.toLocaleString()`) can still
+ *   throw — that shape can't be invented without the real data.
  */
-function valueForRequiredUnknown(prop: PropControl): unknown {
-  const tsType = prop.tsType;
-  if (FUNCTION_TYPE.test(tsType)) return undefined;
-  if (ARRAY_TYPE.test(tsType.trim())) return [];
+function valueForUnknown(prop: PropControl): unknown | typeof SKIP {
+  const tsType = prop.tsType.trim();
+  // FUNCTION FIRST: a function signature can mention `Date` or `[]` in its
+  // params/return (`(d: Date) => boolean`, `(x) => Foo[]`), which would else be
+  // read as a Date/array prop and fed a Date/[] the component then CALLS. Skipped
+  // here so the entry builder stubs it as a real callable instead.
+  if (FUNCTION_TYPE.test(tsType)) return SKIP;
+  if (ARRAY_TYPE.test(tsType)) return [];
+  if (DATE_TYPE.test(tsType)) return SAMPLE_DATE;
+  if (!prop.required) return SKIP;
   if (STRING_MEMBER.test(tsType)) return humanize(prop.name);
-  if (COMPONENT_TYPE.test(tsType)) return undefined;
+  if (COMPONENT_TYPE.test(tsType)) return SKIP;
   return {};
 }
 
@@ -85,16 +114,21 @@ export function generateSampleProps(
 
   for (const prop of propModel.props) {
     if (prop.kind === 'unknown') {
-      // Fill only REQUIRED opaque props (objects/arrays); the component will
-      // dereference them at render. Optionals keep their real defaults.
-      if (prop.required) {
-        const value = valueForRequiredUnknown(prop);
-        if (value !== undefined) out[prop.name] = value;
-      }
+      // Safe fills (arrays, Date) apply to optionals too — a component often
+      // maps/dereferences a prop it assumes is passed regardless of the `?`.
+      // Objects/strings stay required-only. Functions are stubbed by the entry
+      // builder (JSON can't carry them), so they SKIP here.
+      const value = valueForUnknown(prop);
+      if (value !== SKIP) out[prop.name] = value;
       continue;
     }
 
     if (prop.kind === 'node') {
+      // A RENDER PROP — a function that RETURNS a node (`renderTags: (t) => ReactNode`)
+      // — is classified `node` by its return type but is called, not rendered.
+      // Filling it with a string makes the component throw "x is not a function";
+      // skip it here so the entry builder stubs it as a real callable.
+      if (FUNCTION_TYPE.test(prop.tsType)) continue;
       // The text placeholder is valid only where a STRING is accepted: `children`,
       // a `ReactNode`/`ReactChild` content prop, or a union with a bare `string`
       // branch. An element-only prop (`avatar`/`icon`: `ReactElement`) rejects it —
