@@ -64,10 +64,13 @@ describe('faithful preview: real theme + messages', () => {
 
     const entry = artifact.sandpack.files['/index.tsx'] as string;
     // Provider imports the real theme export and the real messages, not stubs.
-    expect(entry).toMatch(/import \{ lightTheme as __theme \}/);
-    // The real theme must be used as-is (no palette-guard proxy, which corrupts
-    // MUI's color resolution).
-    expect(entry).not.toMatch(/palette: __wrap\(__theme/);
+    expect(entry).toMatch(/import \{ lightTheme as __rawTheme \}/);
+    // The real theme is rebuilt with cssVariables ON so it EMITS overridable
+    // `--mui-palette-*` vars, carrying the app's palette across faithfully.
+    expect(entry).toMatch(/cssVariables: true/);
+    expect(entry).toMatch(/colorSchemes: \{ light: \{ palette: \(__rawTheme\)\.palette \} \}/);
+    // Its palette is used as-is (no guard proxy, which corrupts colour resolution).
+    expect(entry).not.toMatch(/palette: __wrap\(__raw/);
     expect(entry).toMatch(/import __messages from/);
     expect(entry).toMatch(/messages=\{__messages\}/);
     expect(entry).toMatch(/ThemeProvider theme=\{__theme\}/);
@@ -86,7 +89,9 @@ describe('faithful preview: real theme + messages', () => {
     const plain = scan.components.find((c) => c.descriptor.name === 'Plain');
     const entry = session.buildArtifact(plain!.descriptor.id).sandpack.files['/index.tsx'] as string;
 
-    // No app theme → defensive createTheme(), still non-throwing.
-    expect(entry).toMatch(/const __baseTheme = createTheme\(\)/);
+    // No app theme → a default cssVariables theme (so its standard palette is
+    // overridable), with the missing-token guard re-applied to its palette.
+    expect(entry).toMatch(/createTheme\(\{ cssVariables: true \}\)/);
+    expect(entry).toMatch(/__theme\.palette = __wrap\(__base\.palette\)/);
   });
 });

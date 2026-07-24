@@ -41,8 +41,9 @@ function usesReactHookForm(deps: Readonly<Record<string, string>>): boolean {
   return 'react-hook-form' in deps;
 }
 
-/** Wrap a base theme's palette so unknown custom tokens degrade, not throw. */
-const PALETTE_GUARD = `const __FALLBACK = '#9aa0a6';
+/** The palette-guard helpers: a Proxy that returns a fallback for any missing
+ *  custom token instead of throwing. Defined once; each theme path applies it. */
+const PALETTE_GUARD_HELPERS = `const __FALLBACK = '#9aa0a6';
 function __colorProxy() {
   const f = () => __FALLBACK;
   return new Proxy(f, {
@@ -65,8 +66,46 @@ function __wrap(obj) {
       return __colorProxy();
     },
   });
+}`;
+
+/**
+ * Build the preview's MUI theme so it EMITS overridable CSS variables.
+ *
+ * MUI reads its theme from a JS object, so a plain `<ThemeProvider theme={t}>`
+ * exposes nothing a stylesheet can re-theme — which is why theme colours used to
+ * be a read-only reference. MUI's own "CSS theme variables" mode fixes this: a
+ * theme created with `cssVariables: true` (+ `colorSchemes`) emits
+ * `--mui-palette-*` custom properties on `:root` that its components READ, so
+ * setting those vars live-re-themes the preview. The engine (verified) forces
+ * that mode here.
+ *
+ * Two shapes (both validated against the target's own MUI):
+ *  - real app theme → rebuild it forcing cssVariables while carrying its palette
+ *    (into `colorSchemes.light`) and the other appearance sections across, so the
+ *    render stays faithful. `createTheme(builtTheme, { cssVariables: true })` does
+ *    NOT re-emit vars, so the palette must be lifted into a fresh createTheme.
+ *  - stub (no real theme) → a default cssVariables theme, then re-apply the
+ *    missing-token guard to its palette AFTER createTheme (the vars are generated
+ *    at createTheme time, so proxying the palette afterwards guards runtime
+ *    `theme.palette.custom` access without disturbing the emitted vars).
+ */
+function realThemeBody(exportName: string): string {
+  return (
+    `const __theme = createTheme({\n` +
+    `  cssVariables: true,\n` +
+    `  colorSchemes: { light: { palette: (${exportName}).palette } },\n` +
+    `  typography: (${exportName}).typography,\n` +
+    `  shape: (${exportName}).shape,\n` +
+    `  components: (${exportName}).components,\n` +
+    `});`
+  );
 }
-const __theme = { ...__baseTheme, palette: __wrap(__baseTheme.palette) };`;
+
+const STUB_THEME_BODY =
+  `${PALETTE_GUARD_HELPERS}\n` +
+  `const __base = createTheme({ cssVariables: true });\n` +
+  `const __theme = __base;\n` +
+  `__theme.palette = __wrap(__base.palette);`;
 
 /** Bundle path → relative specifier for an entry-inlined import (entry at root). */
 function rel(bundlePath: string): string {
@@ -102,18 +141,15 @@ export function buildProviderStub(
   if (mui) {
     importLines.push(`import { ThemeProvider, createTheme } from '@mui/material/styles';`);
     if (preview.theme) {
-      // Real app theme → true brand colors. Used AS-IS: it is complete, and the
-      // palette guard must NOT wrap it — the guard returns a truthy proxy for any
-      // missing key, which trips MUI's internal `theme.palette.<x>` existence
-      // checks and corrupts color resolution (renders everything a placeholder).
+      // Real app theme → true brand colors, rebuilt to emit overridable CSS vars.
       importLines.push(
-        `import { ${preview.theme.exportName} as __theme } from '${rel(preview.theme.path)}';`,
+        `import { ${preview.theme.exportName} as __rawTheme } from '${rel(preview.theme.path)}';`,
       );
+      body.push(realThemeBody('__rawTheme'));
     } else {
-      // No real theme: a defensive stub keeps custom-token components from
-      // throwing (placeholder colors) instead of blanking.
-      body.push(`const __baseTheme = createTheme();`);
-      body.push(PALETTE_GUARD);
+      // No real theme: a default cssVariables theme (so its standard palette is
+      // overridable) with the missing-token guard re-applied to its palette.
+      body.push(STUB_THEME_BODY);
     }
     inner = `<ThemeProvider theme={__theme}>${inner}</ThemeProvider>`;
   }

@@ -14,6 +14,8 @@ import type { DesignState } from '../../lib/design-overrides.js';
 import type { Preset } from '../../lib/presets.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
+import { MuiPaletteControls } from './MuiPaletteControls.js';
+import { muiPaletteVarOverrides, usesMui } from './mui-palette.js';
 import { DesignControls } from './DesignControls.js';
 import { PropControls } from './PropControls.js';
 import { PresetBar } from './PresetBar.js';
@@ -77,14 +79,18 @@ export function CustomizePane({
   // re-renders — `?? {}` would otherwise mint a fresh object every time.
   const design = useMemo(() => state.designOverrides ?? {}, [state.designOverrides]);
 
-  // Token overrides keyed by CSS var name (what the iframe applies), from live state.
+  const isMui = usesMui(artifact.bundle.externalDeps);
+
+  // Token overrides keyed by CSS var name (what the iframe applies), from live
+  // state. Mined tokens map id → their own name; the MUI palette picks (stored
+  // under `mui:*` ids) expand into the concrete `--mui-palette-*` vars MUI reads.
   const tokenOverrides = useMemo(() => {
     const byName: Record<string, string> = {};
     for (const [id, value] of Object.entries(state.tokenOverrides)) {
       const token = tokens.find((t) => t.id === id);
       if (token) byName[token.name] = value;
     }
-    return byName;
+    return { ...byName, ...muiPaletteVarOverrides(state.tokenOverrides) };
   }, [state.tokenOverrides, tokens]);
 
   const dirty = isCustomized(state);
@@ -167,6 +173,20 @@ export function CustomizePane({
         </div>
         <DesignControls overrides={design} onChange={setDesign} onStateChange={setPreviewState} />
       </section>
+
+      {/* Live re-theming of the MUI theme palette. Shown for MUI components,
+          where the preview emits `--mui-palette-*` vars these controls override —
+          the thing MUI's JS-object theme couldn't do (colours used to be a
+          read-only reference). */}
+      {isMui && (
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <span className="eyebrow">Theme colours</span>
+            <span className={styles.sectionNote}>MUI palette · live over the preview</span>
+          </div>
+          <MuiPaletteControls overrides={state.tokenOverrides} onChange={setToken} />
+        </section>
+      )}
 
       {editableTokens.length > 0 ? (
         <section className={styles.section}>
