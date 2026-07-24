@@ -66,12 +66,25 @@ export function sourceArea(relPath: string): SourceArea {
   if (baseLower === 'layout') return 'layout';
   if (ROUTE_FILES.has(baseLower) || dirs.some(isPageSegment)) return 'pages';
   if (dirs.some((d) => INFRA_SEGMENTS.has(d))) return 'infra';
-  if (dirs.some((d) => DESIGN_SEGMENTS.has(d))) return 'design-system';
+  // `layout` BEFORE `design-system`: a `layouts/` segment marks the app's shell
+  // (Navbar, Footer, the page frame) even when it sits under `components/`, and
+  // those are app chrome — wired to the app's own providers, not reusable design
+  // parts. Measured on a real target, this is what separates `components/layout/
+  // Navbar` from `components/dialogs/ConfirmDialog`.
   if (dirs.some((d) => LAYOUT_SEGMENTS.has(d))) return 'layout';
+  if (dirs.some((d) => DESIGN_SEGMENTS.has(d))) return 'design-system';
   return 'other';
 }
 
-const NON_DESIGN: ReadonlySet<SourceArea> = new Set<SourceArea>(['icons', 'pages', 'infra']);
+// `layout` is app CHROME (the shell: Navbar, Footer, the page frame). It is tied
+// to the app's own providers and routing, so it neither renders standalone nor
+// transfers to another project — the two things the catalogue is for.
+const NON_DESIGN: ReadonlySet<SourceArea> = new Set<SourceArea>([
+  'icons',
+  'pages',
+  'infra',
+  'layout',
+]);
 
 /** True for the areas the "design components only" toggle keeps. Reversible: the
  *  toggle is one click, and the directory facet always shows every area. */

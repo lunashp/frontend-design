@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   THUMBNAIL_RENDER_WIDTH,
+  naturalCssSize,
   nextThumbnailState,
   thumbnailUrl,
 } from '../src/features/gallery/thumbnail.js';
@@ -46,5 +47,17 @@ describe('nextThumbnailState', () => {
   it('stays fallen back once unavailable — no flicker back to a broken image', () => {
     expect(nextThumbnailState('unavailable', 'load')).toBe('unavailable');
     expect(nextThumbnailState('unavailable', 'error')).toBe('unavailable');
+  });
+});
+
+// A small component (an 80px avatar) captured at 2x is a 160px PNG; stretched to
+// fill the frame it reads as a blurry blob and misstates the component's scale.
+describe('naturalCssSize (upscale cap)', () => {
+  it('halves the 2x capture back to the size the component rendered at', () => {
+    expect(naturalCssSize(160, 160)).toEqual({ width: 80, height: 80 });
+    expect(naturalCssSize(1152, 1936)).toEqual({ width: 576, height: 968 });
+  });
+  it('never returns a negative size', () => {
+    expect(naturalCssSize(-10, 0)).toEqual({ width: 0, height: 0 });
   });
 });

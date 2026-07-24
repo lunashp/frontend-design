@@ -12,6 +12,29 @@
  */
 export const THUMBNAIL_RENDER_WIDTH = 320;
 
+/**
+ * The host captures at deviceScaleFactor 2 (see thumbnail-renderer.ts), so the
+ * PNG is twice the size the component actually rendered at.
+ */
+export const THUMBNAIL_CAPTURE_SCALE = 2;
+
+/**
+ * The CSS size the component rendered at, recovered from the PNG's pixel size.
+ * Used as an upscale CAP: an 80px avatar stretched to fill the frame reads as a
+ * blurry blob and misrepresents the component's real scale, so it is shown at
+ * the size it actually is and centred. Anything larger than the frame is still
+ * shrunk by `object-fit: contain`.
+ */
+export function naturalCssSize(
+  naturalWidth: number,
+  naturalHeight: number,
+): { readonly width: number; readonly height: number } {
+  return {
+    width: Math.max(0, naturalWidth) / THUMBNAIL_CAPTURE_SCALE,
+    height: Math.max(0, naturalHeight) / THUMBNAIL_CAPTURE_SCALE,
+  };
+}
+
 /** Build the lazy thumbnail URL. The <img> loads it only when the card mounts,
  * and the grid is virtualized, so only visible cards ever fetch. */
 export function thumbnailUrl(projectRoot: string, id: string, width = THUMBNAIL_RENDER_WIDTH): string {

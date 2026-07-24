@@ -17,7 +17,11 @@ describe('sourceArea', () => {
     // design system — the reusable UI lives under these
     ['src/components/dialogs/ConfirmDialog.tsx', 'design-system'],
     ['src/@core/components/Card.tsx', 'design-system'],
-    ['src/components/layout/Header.tsx', 'design-system'], // under components/ wins over the "layout" word
+    // A `layout/` segment wins over `components/`: this is the app's shell
+    // (Navbar/Footer/page frame), which is wired to the app's own providers and
+    // does not transfer to another project — chrome, not a reusable design part.
+    ['src/components/layout/Header.tsx', 'layout'],
+    ['src/@layouts/components/vertical/Footer.tsx', 'layout'],
     ['packages/ui/src/Button.tsx', 'design-system'],
     ['src/design-system/Chip.tsx', 'design-system'],
     ['src/widgets/StatTile.tsx', 'design-system'],
@@ -59,13 +63,15 @@ describe('sourceArea', () => {
 });
 
 describe('isDesignArea (what "design components only" keeps)', () => {
-  it('keeps design-system, layout, and undecided; drops icons/pages/infra', () => {
+  it('keeps design-system and undecided; drops icons/pages/infra and app chrome', () => {
     expect(isDesignArea('design-system')).toBe(true);
-    expect(isDesignArea('layout')).toBe(true);
     expect(isDesignArea('other')).toBe(true);
     expect(isDesignArea('icons')).toBe(false);
     expect(isDesignArea('pages')).toBe(false);
     expect(isDesignArea('infra')).toBe(false);
+    // App chrome: tied to the app's providers/routing, so it neither renders
+    // standalone nor transfers — the two things the catalogue exists for.
+    expect(isDesignArea('layout')).toBe(false);
   });
 });
 

@@ -4,7 +4,12 @@ import { useBasket } from '../kit/basket-context.js';
 import { KIND_LABEL } from '../../lib/taxonomy.js';
 import { RankChip } from './RankChip.js';
 import { ContextMeter } from './ContextMeter.js';
-import { nextThumbnailState, thumbnailUrl, type ThumbnailState } from './thumbnail.js';
+import {
+  naturalCssSize,
+  nextThumbnailState,
+  thumbnailUrl,
+  type ThumbnailState,
+} from './thumbnail.js';
 import styles from './ComponentCard.module.css';
 
 function shortPath(filePath: string, root: string): string {
@@ -66,7 +71,16 @@ export function ComponentCard({
               loading="lazy"
               decoding="async"
               data-ready={thumb === 'ready'}
-              onLoad={() => setThumb((s) => nextThumbnailState(s, 'load'))}
+              onLoad={(e) => {
+                // Cap the image at the size the component actually rendered at,
+                // so a small one is centred at true scale instead of being blown
+                // up to fill the frame. `object-fit: contain` still shrinks big ones.
+                const img = e.currentTarget;
+                const { width, height } = naturalCssSize(img.naturalWidth, img.naturalHeight);
+                img.style.maxWidth = `${width}px`;
+                img.style.maxHeight = `${height}px`;
+                setThumb((s) => nextThumbnailState(s, 'load'));
+              }}
               onError={() => setThumb((s) => nextThumbnailState(s, 'error'))}
             />
           )}
