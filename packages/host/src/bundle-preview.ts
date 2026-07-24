@@ -242,7 +242,15 @@ ${css}</style>
   ['localStorage', 'sessionStorage'].forEach(function (name) {
     if (usable(name)) return;
     try { Object.defineProperty(window, name, { value: memStorage(), configurable: true }); }
-    catch (e) { try { window[name] = memStorage(); } catch (e2) { /* give up */ } }
+    catch (e) {
+      try { window[name] = memStorage(); }
+      catch (e2) {
+        // Both installs failed (a locked-down property). Say so, rather than
+        // swallow it: the component will now crash on the first storage access
+        // and the blank preview would otherwise have no explanation.
+        console.warn('[component-explorer] could not shim ' + name + '; a component that uses it may crash the preview');
+      }
+    }
   });
 
   // document.cookie throws the SAME SecurityError on any access in an opaque
@@ -259,7 +267,12 @@ ${css}</style>
       set: function (v) { var pair = String(v).split(';')[0]; if (pair) jar = jar ? jar + '; ' + pair : pair; }
     };
     try { Object.defineProperty(document, 'cookie', cookieDesc); }
-    catch (e) { try { Object.defineProperty(Document.prototype, 'cookie', cookieDesc); } catch (e2) { /* give up */ } }
+    catch (e) {
+      try { Object.defineProperty(Document.prototype, 'cookie', cookieDesc); }
+      catch (e2) {
+        console.warn('[component-explorer] could not shim document.cookie; a component that reads it may crash the preview');
+      }
+    }
   }
 })();
 </script>

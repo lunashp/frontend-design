@@ -239,6 +239,31 @@ describe('emptyTokensReason (why the token panel is empty)', () => {
     // every CSS-in-JS component "has a stylesheet" and give the wrong reason.
     expect(emptyTokensReason({ '/tokens.css': ':root{}' })).toMatch(/CSS-in-JS|inline/i);
   });
+
+  it('names styled-components explicitly and does NOT imply the component is bare', () => {
+    // The old message said "CSS-in-JS or inline, nothing to extract" — which
+    // reads as "this component has no themeable values" when in fact its styled
+    // template may just be dynamic/unreadable. Now it says so.
+    const reason = emptyTokensReason({
+      // Source text of a styled-components component (a plain string, not a live
+      // template — the `styled.div` token is all the detector needs).
+      '/Chip.tsx': ["import styled from 'styled-components';", 'const S = styled.div`color: red`;'].join(
+        '\n',
+      ),
+      '/tokens.css': ':root{}',
+    });
+    expect(reason).toMatch(/styled-components|emotion/i);
+    expect(reason).toMatch(/dynamic|can’t read|can't read/i);
+    expect(reason).not.toMatch(/no stylesheet/i);
+  });
+
+  it('detects an emotion `css` tagged template too', () => {
+    const reason = emptyTokensReason({
+      '/Box.tsx': 'const s = css`padding: 8px`;',
+      '/tokens.css': ':root{}',
+    });
+    expect(reason).toMatch(/styled-components|emotion|CSS-in-JS/i);
+  });
 });
 
 describe('previewDesignMessage (what the preview iframe is actually told)', () => {

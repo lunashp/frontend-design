@@ -78,6 +78,9 @@ describe('web design-overrides mirror', () => {
     expect(mirror.emitDesignRule('Card', EVERY_OVERRIDE)).toBe(
       core.emitDesignRule('Card', EVERY_OVERRIDE),
     );
+    expect(mirror.emitDesignStyleObject(EVERY_OVERRIDE)).toBe(
+      core.emitDesignStyleObject(EVERY_OVERRIDE),
+    );
   });
 
   it('elides state no-ops against the resting value identically on both sides', () => {

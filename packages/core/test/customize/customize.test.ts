@@ -13,6 +13,7 @@ import {
   emitDesignCss,
   emitDesignDeclarations,
   emitDesignRule,
+  emitDesignStyleObject,
   emitDesignStyleSheet,
   isDesignKey,
   parseDesignKey,
@@ -340,6 +341,41 @@ describe('emitDesignRule (copyable CSS)', () => {
   });
   it('is empty when nothing is set', () => {
     expect(emitDesignRule('X', {})).toBe('');
+  });
+  it('points the reader to the selector-free inline style', () => {
+    expect(emitDesignRule('X', { color: '#111' })).toContain('inline style');
+  });
+});
+
+describe('emitDesignStyleObject (selector-free inline style)', () => {
+  it('emits a React style object with camelCased keys and no !important', () => {
+    const obj = emitDesignStyleObject({ width: '200px', color: '#fff', radius: '8' });
+    expect(obj).toContain('width: "200px"');
+    expect(obj).toContain('color: "#fff"');
+    // border-radius → borderRadius, value has its px unit.
+    expect(obj).toContain('borderRadius: "8px"');
+    expect(obj).not.toContain('!important');
+    // Valid object literal shape.
+    expect(obj.startsWith('{')).toBe(true);
+    expect(obj.trimEnd().endsWith('}')).toBe(true);
+  });
+
+  it('covers the multi-declaration fields (transform, border trio)', () => {
+    const obj = emitDesignStyleObject({ scale: '150', borderWidth: '2', borderColor: '#f00' });
+    expect(obj).toContain('transform: "scale(1.5)"');
+    expect(obj).toContain('transformOrigin: "top left"');
+    expect(obj).toContain('borderStyle: "solid"');
+    expect(obj).toContain('borderWidth: "2px"');
+    expect(obj).toContain('borderColor: "#f00"');
+  });
+
+  it('is empty when nothing is set (so no dead "copy" button)', () => {
+    expect(emitDesignStyleObject({})).toBe('');
+  });
+
+  it('only reflects the resting state — hover/focus keys do not leak in', () => {
+    // Inline styles cannot express :hover; a hover-only override yields nothing.
+    expect(emitDesignStyleObject({ 'hover:color': '#222' })).toBe('');
   });
 });
 

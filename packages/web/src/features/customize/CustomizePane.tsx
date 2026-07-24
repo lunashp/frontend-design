@@ -9,7 +9,7 @@ import {
   EMPTY_CUSTOMIZATION,
   type CustomizationState,
 } from '../../lib/customize.js';
-import { emitDesignRule } from '../../lib/design-overrides.js';
+import { emitDesignRule, emitDesignStyleObject } from '../../lib/design-overrides.js';
 import type { Preset } from '../../lib/presets.js';
 import { LocalPreview } from '../preview/LocalPreview.js';
 import { TokenPanel } from './TokenPanel.js';
@@ -85,6 +85,9 @@ export function CustomizePane({
     () => emitDesignRule(artifact.descriptor.name, design),
     [artifact.descriptor.name, design],
   );
+  // The guess-free companion: an inline-style object needs no selector, so it
+  // works wherever the user pastes it onto the component. Resting state only.
+  const designStyle = useMemo(() => emitDesignStyleObject(design), [design]);
 
   const setToken = (id: string, value: string) =>
     onChange({ ...state, tokenOverrides: { ...state.tokenOverrides, [id]: value } });
@@ -179,6 +182,9 @@ export function CustomizePane({
         >
           Reset
         </button>
+        {designStyle !== '' && (
+          <CopyButton text={`style={${designStyle}}`} label="Copy inline style" />
+        )}
         {designRule !== '' && <CopyButton text={designRule} label="Copy design CSS" />}
         {tokens.length > 0 && (
           <CopyButton

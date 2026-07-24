@@ -348,7 +348,38 @@ export function emitDesignRule(name: string, overrides: Readonly<Record<string, 
     `/* Design overrides for ${name}. Apply to the component's ROOT element.\n` +
     `   ${ROOT_CLASS_PLACEHOLDER} is a PLACEHOLDER — the real root class is not\n` +
     `   knowable from outside (CSS-module hashes, library-generated classes).\n` +
-    `   Replace it with the component's actual root class. */\n` +
+    `   Replace it with the component's actual root class, OR use the copyable\n` +
+    `   inline style, which needs no selector. */\n` +
     `${rules.join('\n\n')}\n`
   );
+}
+
+/** A CSS `prop: value` declaration → a `[camelCaseKey, value]` pair for a React
+ *  style object. `!important` is dropped (a plain style object cannot carry it). */
+function toStyleEntry(declaration: string): [string, string] | null {
+  const at = declaration.indexOf(':');
+  if (at < 0) return null;
+  const prop = declaration.slice(0, at).trim();
+  const value = declaration.slice(at + 1).replace(IMPORTANT, '').trim();
+  if (!prop || !value) return null;
+  const key = prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+  return [key, value];
+}
+
+/**
+ * The RESTING design overrides as a ready-to-paste React inline-style object,
+ * e.g. `{ width: '200px', color: '#fff' }`. This is the guess-free companion to
+ * `emitDesignRule`: an inline style needs NO selector, so it applies wherever the
+ * user drops it onto the component (`<Component style={…} />`) — the placeholder
+ * selector problem does not arise. Resting state only: inline styles cannot
+ * express `:hover`/`:focus`/`:active`, so a component using those still needs the
+ * CSS rule. Empty string when nothing is set.
+ */
+export function emitDesignStyleObject(overrides: Readonly<Record<string, string>> = {}): string {
+  const entries = emitDesignDeclarations(overrides)
+    .map(toStyleEntry)
+    .filter((e): e is [string, string] => e !== null);
+  if (entries.length === 0) return '';
+  const body = entries.map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join(',\n');
+  return `{\n${body},\n}`;
 }
