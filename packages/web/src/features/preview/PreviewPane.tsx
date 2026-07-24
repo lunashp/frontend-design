@@ -6,6 +6,7 @@ import { ColourSourceCaption } from './ColourSourceCaption.js';
 import { DepsList } from './DepsList.js';
 import { LocalPreview } from './LocalPreview.js';
 import { renderabilityLabel } from './renderability.js';
+import { classifyCodeOnly } from './code-only-reason.js';
 import styles from './PreviewPane.module.css';
 
 export function PreviewPane({
@@ -33,11 +34,18 @@ export function PreviewPane({
       </div>
 
       {spec.renderability === 'code-only' ? (
-        <div className={styles.codeOnly}>
-          This component can’t be bundled for an isolated preview (it composes too many files or
-          depends on a server-only runtime). Its portable code and dependency list are on the
-          Portable tab.
-        </div>
+        (() => {
+          // A specific reason, not one generic line — above all, a genuine Server
+          // Component is named as such (a fact about the component, not a tool
+          // failure) rather than lumped in with "too complex".
+          const reason = classifyCodeOnly(artifact.bundle);
+          return (
+            <div className={styles.codeOnly} data-kind={reason.kind}>
+              <strong className={styles.codeOnlyHead}>{reason.headline}</strong>
+              <span>{reason.detail}</span>
+            </div>
+          );
+        })()
       ) : (
         <>
           <div className={styles.stageHead}>

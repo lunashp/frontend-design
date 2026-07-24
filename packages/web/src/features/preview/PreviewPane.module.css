@@ -116,12 +116,27 @@
 }
 
 .codeOnly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-4);
   font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--text-dim);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
+}
+/* A server component is a calm fact, not a failure — a quiet accent surface, not
+   the neutral "couldn't do it" grey. */
+.codeOnly[data-kind='server-component'] {
+  background: var(--aside-bg-accent);
+  border-color: var(--aside-line-accent);
+}
+.codeOnlyHead {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--text-base);
 }
 
 .notes {
