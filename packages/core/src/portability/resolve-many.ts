@@ -11,7 +11,6 @@
  */
 
 import type { Project } from 'ts-morph';
-import * as path from 'node:path';
 import type { LoadedProject } from '../types/project.js';
 import type { ComponentDescriptor } from '../types/component.js';
 import type { FileMap } from '../types/portable-bundle.js';
@@ -28,6 +27,7 @@ import {
   findDanglingImports,
   resolveExternalDeps,
 } from './portable-common.js';
+import { assetModuleKey, inlineAssetFile } from './inline-asset.js';
 
 /** One entry's resolved import graph, kept alongside the descriptor it came from. */
 interface EntryGraph {
@@ -166,8 +166,15 @@ export function resolveMany(
     })),
   );
 
+  // Inline each imported asset as a self-contained data-URI module (see
+  // portability-resolver.ts) so kit bundles show real images too.
   for (const asset of assetsUnion) {
-    warnings.push(`Asset not inlined (P2): ${path.basename(asset)}`);
+    const result = inlineAssetFile(asset, rofs);
+    if ('source' in result) {
+      files[assetModuleKey(bundlePathOf(asset, base))] = result.source;
+    } else {
+      warnings.push(`Asset not inlined — ${result.skip}`);
+    }
   }
 
   let previewTheme: { path: string; exportName: string } | undefined;

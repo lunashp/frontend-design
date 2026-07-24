@@ -5,7 +5,6 @@
  */
 
 import type { Project } from 'ts-morph';
-import * as path from 'node:path';
 import type { LoadedProject } from '../types/project.js';
 import type { ComponentDescriptor } from '../types/component.js';
 import type { PortableBundle, FileMap } from '../types/portable-bundle.js';
@@ -20,6 +19,7 @@ import {
   findDanglingImports,
   resolveExternalDeps,
 } from './portable-common.js';
+import { assetModuleKey, inlineAssetFile } from './inline-asset.js';
 
 export function resolvePortability(
   project: Project,
@@ -94,8 +94,16 @@ export function resolvePortability(
 
   const externalDeps = resolveExternalDeps(graph.externals, droppedPackages, loaded, rofs);
 
+  // Inline each imported asset as a self-contained data-URI module, so the
+  // preview and the copied bundle both show the real image instead of a broken
+  // one — and the import no longer dangles into a code-only downgrade.
   for (const asset of graph.assets) {
-    warnings.push(`Asset not inlined (P2): ${path.basename(asset)}`);
+    const result = inlineAssetFile(asset, rofs);
+    if ('source' in result) {
+      files[assetModuleKey(bundlePathOf(asset, base))] = result.source;
+    } else {
+      warnings.push(`Asset not inlined — ${result.skip}`);
+    }
   }
 
   // Bundle the real theme / messages so the provider can supply true values.

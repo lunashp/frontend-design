@@ -13,7 +13,7 @@ import { isInside } from '../util/paths.js';
 export type SpecifierKind = 'relative' | 'alias' | 'external';
 
 export const STYLE_EXT = /\.(css|scss|sass|less)$/;
-export const ASSET_EXT = /\.(svg|png|jpe?g|gif|webp|avif|json)$/;
+export const ASSET_EXT = /\.(svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|json)$/;
 const TS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
 export function classifySpecifier(spec: string, loaded: LoadedProject): SpecifierKind {
