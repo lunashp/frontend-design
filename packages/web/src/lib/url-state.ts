@@ -82,6 +82,25 @@ const TAB_CODE: Record<Tab, string> = {
   Customize: 'c',
 };
 
+/**
+ * A sane ceiling on the context-cap param. Real scores sit around 0–10; anything
+ * beyond this is a hand-edited or stale URL, and accepting it verbatim would let
+ * `cx=99999999` masquerade as a filter. Out-of-range → no cap.
+ */
+const MAX_CONTEXT_CAP = 20;
+
+/** `cx` string → an integer cap in [0, MAX_CONTEXT_CAP], or null for anything
+ *  missing, non-integer, negative, or out of range. Total, never throws. */
+function decodeContextCap(raw: string | null): number | null {
+  if (raw === null || raw === '') return null;
+  // Number('') is 0 and Number('1.5') is 1.5, so parse strictly: only a run of
+  // digits is a cap. This rejects '', 'abc', '-1', '1.5', 'NaN' in one test.
+  if (!/^\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_CONTEXT_CAP) return null;
+  return n;
+}
+
 function invert<T extends string>(codes: Record<T, string>): ReadonlyMap<string, T> {
   const entries = Object.entries(codes) as [T, string][];
   return new Map(entries.map(([value, code]) => [code, value]));
@@ -138,6 +157,8 @@ export function encodeUrlState(state: UrlState): string {
   if (f.kinds.length) params.set('k', encodeSet(f.kinds, KIND_CODE));
   if (f.roles.length) params.set('ro', encodeSet(f.roles, ROLE_CODE));
   if (f.dir) params.set('dir', f.dir);
+  // `0` is a real cap (isolated-only), so test against null, not falsiness.
+  if (f.maxContext !== null) params.set('cx', String(f.maxContext));
   if (f.sort !== DEFAULT_FILTERS.sort) params.set('s', SORT_CODE[f.sort]);
   if (f.presentationalOnly) params.set('p', '1');
   // `designOnly` defaults to ON, so the URL records the opt-OUT: `all=1` reads
@@ -175,6 +196,7 @@ export function decodeUrlState(search: string): UrlState {
       sort: sort ?? DEFAULT_FILTERS.sort,
       designOnly: params.get('all') !== '1',
       dir: dir ? dir : DEFAULT_FILTERS.dir,
+      maxContext: decodeContextCap(params.get('cx')),
     },
     selectedId: selectedId ? selectedId : DEFAULT_URL_STATE.selectedId,
     tab: tab ?? DEFAULT_URL_STATE.tab,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import type { AtomicLevel, ComponentKind, ComponentRole } from '../../api/types.js';
-import { KIND_LABEL, RANKS, RANK_ORDER } from '../../lib/taxonomy.js';
+import type { AtomicLevel, ComponentKind } from '../../api/types.js';
+import { KIND_LABEL, RANKS, RANK_ORDER, ROLE_LABEL, ROLE_ORDER } from '../../lib/taxonomy.js';
 import { toggle, type FilterState, type SortOrder } from '../../lib/filter.js';
 import type { DirectoryFacet } from '../../lib/source-area.js';
 import { isTextEntry } from './shortcuts.js';
@@ -8,25 +8,24 @@ import styles from './Filters.module.css';
 
 const KINDS: ComponentKind[] = ['presentational', 'container', 'layout'];
 
-/**
- * The roles offered as filter chips, in reading order. `other` is deliberately
- * absent — it is the "no confident role" catch-all, not a category worth
- * filtering TO — mirroring how the atomic-level facet hides `page` under the
- * design-only default.
- */
-const ROLE_CHIPS: { value: ComponentRole; label: string }[] = [
-  { value: 'action', label: 'Action' },
-  { value: 'form-control', label: 'Form control' },
-  { value: 'data-display', label: 'Data display' },
-  { value: 'navigation', label: 'Navigation' },
-  { value: 'feedback', label: 'Feedback' },
-  { value: 'layout', label: 'Layout' },
-];
-
 /** Sort options, paired with the label the control shows for each. */
 const SORTS: { value: SortOrder; label: string }[] = [
   { value: 'reliability', label: 'Most reliable' },
   { value: 'mostUsed', label: 'Most used' },
+];
+
+/**
+ * The context-score caps offered, as a single-select "at most this much app
+ * context" ladder. `null` = no cap. The thresholds mirror the meter's own
+ * bands (see `contextLoadLabel`): 0 is isolated, ≤2 light, ≤5 some. This is the
+ * app's headline "will it port cleanly" signal — sortable already, now
+ * filterable. Single-select because it is a ceiling, not a set.
+ */
+const CONTEXT_CAPS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Any' },
+  { value: 0, label: 'Isolated' },
+  { value: 2, label: '≤ Light' },
+  { value: 5, label: '≤ Some' },
 ];
 
 /** Directories shown in the facet — the design-system-ish ones first, then the
@@ -171,6 +170,25 @@ export function Filters({
       </fieldset>
 
       <fieldset className={styles.group}>
+        <legend className="eyebrow">Context</legend>
+        <div className={styles.chips}>
+          {CONTEXT_CAPS.map((c) => (
+            <button
+              key={c.label}
+              type="button"
+              className={styles.kind}
+              data-active={filters.maxContext === c.value}
+              aria-pressed={filters.maxContext === c.value}
+              onClick={() => set({ maxContext: c.value })}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <span className={styles.hint}>how much app context it needs to render</span>
+      </fieldset>
+
+      <fieldset className={styles.group}>
         <legend className="eyebrow">Atomic level</legend>
         <div className={styles.chips}>
           {RANK_ORDER.filter((level) => !filters.designOnly || level !== 'page').map((level: AtomicLevel) => {
@@ -195,16 +213,16 @@ export function Filters({
       <fieldset className={styles.group}>
         <legend className="eyebrow">Role</legend>
         <div className={styles.chips}>
-          {ROLE_CHIPS.map((r) => (
+          {ROLE_ORDER.map((role) => (
             <button
-              key={r.value}
+              key={role}
               type="button"
               className={styles.kind}
-              data-active={filters.roles.includes(r.value)}
-              aria-pressed={filters.roles.includes(r.value)}
-              onClick={() => set({ roles: toggle(filters.roles, r.value) })}
+              data-active={filters.roles.includes(role)}
+              aria-pressed={filters.roles.includes(role)}
+              onClick={() => set({ roles: toggle(filters.roles, role) })}
             >
-              {r.label}
+              {ROLE_LABEL[role]}
             </button>
           ))}
         </div>

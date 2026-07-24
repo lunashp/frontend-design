@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ComponentSummary } from '../../api/types.js';
 import { useBasket } from '../kit/basket-context.js';
-import { KIND_LABEL } from '../../lib/taxonomy.js';
+import { KIND_LABEL, roleLabel } from '../../lib/taxonomy.js';
 import { RankChip } from './RankChip.js';
 import { ContextMeter } from './ContextMeter.js';
 import { propSummary } from './prop-summary.js';
@@ -30,6 +30,10 @@ export function ComponentCard({
   onSelect: () => void;
 }) {
   const { descriptor, classification, propModel, usage } = component;
+  // What the component is FOR — computed for every component and filterable, but
+  // shown nowhere until now. Null for the `other` catch-all, so a card only wears
+  // a role tag when it says something.
+  const role = roleLabel(classification.role);
   // Leads with the props the component DECLARES. `props.length` counts the
   // wrapped library's contract too, so a MUI wrapper that adds one prop used to
   // read "64 props" — a number about MUI, not about this component.
@@ -96,9 +100,19 @@ export function ComponentCard({
 
         <div className={styles.identity}>
           <h3 className={styles.name}>{descriptor.name}</h3>
-          <span className={styles.export}>
-            {descriptor.isDefaultExport ? 'default' : 'named'} export
-          </span>
+          {/* One metadata line, always exactly one line tall (role present or
+              not) so every card stays the same height for the virtualized grid.
+              Role is the "what is this FOR" signpost; export type sits beside it. */}
+          <div className={styles.meta}>
+            {role && (
+              <span className={styles.role} title={`Role: ${role}`}>
+                {role}
+              </span>
+            )}
+            <span className={styles.export}>
+              {descriptor.isDefaultExport ? 'default' : 'named'} export
+            </span>
+          </div>
         </div>
 
         <span className={styles.path}>{shortPath(descriptor.filePath, projectRoot)}</span>

@@ -36,6 +36,15 @@ export interface FilterState {
   /** When set, show only components whose directory is, or sits under, this one
    *  (the directory facet). The most precise filter — the author's own layout. */
   dir: string | null;
+  /**
+   * Upper bound on `contextDependencyScore`: keep only components that need at
+   * most this much app context to render. `null` = no cap (show everything).
+   * This is the app's headline "will it port cleanly" signal — `reliability`
+   * sort already orders by it; this lets you narrow to it, not just sort. A
+   * component whose score EQUALS the cap is kept (≤, not <), so "Isolated" = 0
+   * means exactly the zero-context components.
+   */
+  maxContext: number | null;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -47,6 +56,7 @@ export const DEFAULT_FILTERS: FilterState = {
   sort: 'reliability',
   designOnly: true,
   dir: null,
+  maxContext: null,
 };
 
 /** Imports from analyzed source; absent on hand-built summaries, so default to 0. */
@@ -90,6 +100,9 @@ export function applyFilters(
         if (!isDesignArea(sourceArea(relPath))) return false;
       }
       if (f.dir && !underDir(relativeDir(projectRoot, c.descriptor.filePath), f.dir)) return false;
+      if (f.maxContext !== null && c.classification.contextDependencyScore > f.maxContext) {
+        return false;
+      }
       if (f.presentationalOnly && c.classification.kind !== 'presentational') return false;
       if (f.ranks.length && !f.ranks.includes(c.classification.atomicLevel)) return false;
       if (f.kinds.length && !f.kinds.includes(c.classification.kind)) return false;

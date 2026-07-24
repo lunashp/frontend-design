@@ -175,6 +175,19 @@ lays out wider than its own track and paints over its neighbour.
 `RankChip` says the rank in words, the a11y `impact` chip says the severity in
 words. Because the chip says it, nothing else needs to.
 
+### Role tag
+
+The "what is this component FOR" facet (`action`, `form-control`, …), shown on
+the gallery card's metadata line and in the inspector header. A quiet
+accent-tinted tag: `color: var(--accent)` on `color-mix(accent 10%)` with a
+`color-mix(accent 22%)` border, `--radius-chip`. It is a THIRD encoding channel
+distinct from the two already on the card — the rank chip carries rank in its
+own colour, the kind is faint mono text — so the three facets never restate one
+another. Hidden entirely for the `other` catch-all (an "Other" tag is noise, not
+a fact) via `roleLabel()`, which returns null there. On the card it shares the
+one metadata line with the export type and never adds height — the virtualized
+grid needs every card the same height whether or not it carries a role.
+
 ### Aside — caveat, limitation, heuristic note
 
 The replacement for the banned rail. A recessed **plane**, so the whole surface

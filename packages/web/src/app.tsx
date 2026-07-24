@@ -32,7 +32,27 @@ import { KitPane } from './features/kit/KitPane.js';
 import { CompareButton } from './features/compare/CompareButton.js';
 import { ComparePane, type CompareItem } from './features/compare/ComparePane.js';
 import { ExportCatalogButton } from './features/catalog/ExportCatalogButton.js';
+import {
+  loadSession,
+  pruneBasket,
+  saveSession,
+  sessionStorageKey,
+  type SessionStorageLike,
+} from './lib/session-store.js';
 import styles from './app.module.css';
+
+/**
+ * `window.localStorage`, or null when it is unreachable — the very property
+ * access can throw in some privacy modes. Returning null lets the pure session
+ * store degrade to "no persistence" without a try/catch at every call site.
+ */
+function getLocalStorage(): SessionStorageLike | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 /** Mirrors the `max-width: 1180px` breakpoint in app.module.css, below which
  *  the inspector column is gone and it becomes a modal slide-over instead. */
@@ -79,6 +99,13 @@ export function App() {
   // the keyboard. See the Escape handler below.
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
   const compact = useMediaQuery(COMPACT_QUERY);
+  // Session persistence bookkeeping. `hydratedRoot` records which project the
+  // basket/customizations in memory were loaded FOR, so the save effect never
+  // writes one project's state into another's key during the switch. `skipSave`
+  // suppresses exactly the one save that the hydration itself would otherwise
+  // trigger (it would rewrite what we just read). See the two effects below.
+  const hydratedRoot = useRef<string | null>(null);
+  const skipSave = useRef(false);
 
   // Auto-scan the host's default project once, for an immediate first view — and
   // load its preflight profile alongside so the user sees WHAT is being scanned
@@ -213,15 +240,46 @@ export function App() {
   const removeFromKit = useCallback((id: string) => setBasket((b) => removeFromBasket(b, id)), []);
   const closeKit = useCallback(() => setKitOpen(false), []);
   const closeCompare = useCallback(() => setCompareOpen(false), []);
-  // A fresh scan target invalidates every id in the basket, so drop them and shut
-  // the drawer rather than carry ids the new project has never heard of into a
-  // POST /api/kit that would 404.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scannedRoot is the change SIGNAL that must re-run this reset, not a value the body reads.
+  // HYDRATE the basket + customizations for whatever project is now scanned.
+  // Previously this just cleared them on every root change; now it restores the
+  // saved session for that project so a reload (or a re-scan of the same target)
+  // lands the user back where they were — the basket and minutes of theming that
+  // used to evaporate. Runs BEFORE the save effect below so, on a project switch,
+  // the just-loaded state is what gets persisted, never the outgoing project's.
+  //
+  // The restored basket is pruned to ids THIS scan still contains: a saved id
+  // for a since-deleted component would 404 the whole kit build. Drawers close
+  // on a switch exactly as before.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scannedRoot is the change SIGNAL; `result` is read through the closure to prune the restored basket to the ids this scan still has.
   useEffect(() => {
-    setBasket(EMPTY_BASKET);
+    if (!scannedRoot) return;
+    const snap = loadSession(getLocalStorage(), sessionStorageKey(scannedRoot));
+    const present = new Set(result?.components.map((c) => c.descriptor.id) ?? []);
+    // Suppress the one save this hydration would otherwise trigger — it would
+    // just write back what we read. Real edits after this persist normally.
+    skipSave.current = true;
+    hydratedRoot.current = scannedRoot;
+    setBasket(new Set(pruneBasket(snap.basket, present)));
+    setCustomizations(new Map(Object.entries(snap.customizations)));
     setKitOpen(false);
     setCompareOpen(false);
   }, [scannedRoot]);
+
+  // PERSIST every basket / customization change under the current project's key.
+  // Guarded two ways: only once the in-memory state has been hydrated FOR this
+  // exact root (so a mid-switch render can't write the old project's basket into
+  // the new key), and skipping the single write the hydration itself provokes.
+  useEffect(() => {
+    if (!scannedRoot || hydratedRoot.current !== scannedRoot) return;
+    if (skipSave.current) {
+      skipSave.current = false;
+      return;
+    }
+    saveSession(getLocalStorage(), sessionStorageKey(scannedRoot), {
+      basket: [...basket],
+      customizations: Object.fromEntries(customizations),
+    });
+  }, [basket, customizations, scannedRoot]);
   // The basket controls the gallery cards read via context — memoized so only a
   // real basket change re-renders the mounted cards.
   const basketControls: BasketControls = useMemo(

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ComponentSummary } from '../../api/types.js';
 import { useArtifact } from '../../api/useArtifact.js';
-import { KIND_LABEL, RANKS } from '../../lib/taxonomy.js';
+import { KIND_LABEL, RANKS, roleLabel } from '../../lib/taxonomy.js';
 import { editorLinks, formatLocation, relativePath } from '../../lib/editor-links.js';
 import { explainContextScore } from '../../lib/context-score.js';
 import type { CustomizationState } from '../../lib/customize.js';
@@ -343,6 +343,9 @@ export function Inspector({
         <div className={styles.tags}>
           <RankChip level={classification.atomicLevel} />
           <span className={styles.kind}>{KIND_LABEL[classification.kind]}</span>
+          {roleLabel(classification.role) && (
+            <span className={styles.role}>{roleLabel(classification.role)}</span>
+          )}
         </div>
       </header>
 

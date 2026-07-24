@@ -39,6 +39,7 @@ const FULL: UrlState = {
     sort: 'mostUsed',
     designOnly: false,
     dir: 'src/ui',
+    maxContext: 5,
   },
   selectedId: 'abc123',
   tab: 'Customize',
@@ -54,7 +55,17 @@ describe('encodeUrlState', () => {
   });
 
   it('spells the full state out in a short, stable form', () => {
-    expect(encodeUrlState(FULL)).toBe('q=Btn&r=ao&k=l&ro=ab&dir=src/ui&s=u&p=1&all=1&c=abc123&t=c');
+    expect(encodeUrlState(FULL)).toBe(
+      'q=Btn&r=ao&k=l&ro=ab&dir=src/ui&cx=5&s=u&p=1&all=1&c=abc123&t=c',
+    );
+  });
+
+  it('omits the context cap when it is null (the default)', () => {
+    expect(encodeUrlState(state({ filters: filters({ maxContext: null }) }))).toBe('');
+  });
+
+  it('encodes a zero cap explicitly (0 is a real cap, not "off")', () => {
+    expect(encodeUrlState(state({ filters: filters({ maxContext: 0 }) }))).toBe('cx=0');
   });
 
   it('keeps directory separators readable rather than percent-encoded', () => {
@@ -122,6 +133,17 @@ describe('decodeUrlState', () => {
     const decoded = decodeUrlState('?dir=&c=');
     expect(decoded.filters.dir).toBeNull();
     expect(decoded.selectedId).toBeNull();
+  });
+
+  it('reads a valid context cap, including zero', () => {
+    expect(decodeUrlState('?cx=5').filters.maxContext).toBe(5);
+    expect(decodeUrlState('?cx=0').filters.maxContext).toBe(0);
+  });
+
+  it('drops a malformed or negative context cap to null (no cap)', () => {
+    for (const raw of ['cx=', 'cx=abc', 'cx=-1', 'cx=1.5', 'cx=NaN', 'cx=99999999']) {
+      expect(decodeUrlState(`?${raw}`).filters.maxContext).toBeNull();
+    }
   });
 
   it('never throws on malformed input', () => {

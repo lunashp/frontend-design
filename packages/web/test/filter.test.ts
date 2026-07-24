@@ -123,6 +123,41 @@ describe('applyFilters — other axes', () => {
   });
 });
 
+describe('applyFilters — maxContext (context-score cap)', () => {
+  const CTX: ComponentSummary[] = [
+    comp('Pure', 'atom', { ctx: 0 }),
+    comp('Light', 'atom', { ctx: 2 }),
+    comp('Some', 'molecule', { ctx: 5 }),
+    comp('Heavy', 'organism', { ctx: 8, kind: 'container' }),
+  ];
+
+  it('null cap keeps everything (the default)', () => {
+    expect(names(applyFilters(CTX, DEFAULT_FILTERS))).toEqual(['Pure', 'Light', 'Some', 'Heavy']);
+  });
+
+  it('cap of 0 keeps only zero-context components (≤, so 0 is included)', () => {
+    expect(names(applyFilters(CTX, { ...DEFAULT_FILTERS, maxContext: 0 }))).toEqual(['Pure']);
+  });
+
+  it('a component whose score EQUALS the cap is kept', () => {
+    // Boundary: cap 2 keeps the score-2 component, drops score 5 and 8.
+    expect(names(applyFilters(CTX, { ...DEFAULT_FILTERS, maxContext: 2 }))).toEqual(['Pure', 'Light']);
+  });
+
+  it('cap of 5 drops only the heavy one', () => {
+    expect(names(applyFilters(CTX, { ...DEFAULT_FILTERS, maxContext: 5 }))).toEqual([
+      'Pure',
+      'Light',
+      'Some',
+    ]);
+  });
+
+  it('composes with other axes (cap AND rank)', () => {
+    const out = applyFilters(CTX, { ...DEFAULT_FILTERS, maxContext: 5, ranks: ['molecule'] });
+    expect(names(out)).toEqual(['Some']);
+  });
+});
+
 describe('applyFilters — query matches prop names', () => {
   const SHEET = comp('Sheet', 'organism', { props: ['open', 'onClose', 'children'] });
   const BUTTON = comp('Button', 'atom', { props: ['variant'] });
