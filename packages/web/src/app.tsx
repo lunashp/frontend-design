@@ -268,9 +268,7 @@ export function App() {
             </div>
           </div>
           {result && (
-            // A small right-aligned group. app.module.css is not owned by this
-            // lane, so the flex grouping is inline rather than a new header class.
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div className={styles.headerActions}>
               <div className={styles.projectChip} title={result.projectRoot}>
                 <span className={styles.frameworkDot} />
                 <span className={styles.frameworkName}>{result.framework}</span>

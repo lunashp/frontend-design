@@ -5,6 +5,13 @@
 .wrap {
   position: relative;
   display: grid;
+  /* A grid item's AUTOMATIC MINIMUM SIZE is its min-content size, not zero. The
+     card's min-content is set by the file path, which cannot wrap — 277px for a
+     deep path against a 260px track at five columns — so the card was laid out
+     wider than its own cell and painted over the card beside it. `min-width: 0`
+     opts out of that minimum, letting the track width win. Both levels need it:
+     .wrap is a grid item of the row, .card is a grid item of .wrap. */
+  min-width: 0;
 }
 
 .card {
@@ -13,6 +20,10 @@
   flex-direction: column;
   gap: var(--space-3);
   height: 100%;
+  /* See .wrap: without this the card claims its min-content width and overflows
+     the cell. With it, every child that clamps (.path, .foot) finally has a
+     bounded width to clamp against. */
+  min-width: 0;
   padding: var(--space-4) var(--space-4) var(--space-3);
   text-align: left;
   /* Glass-lite: a translucent pane with an edge highlight, NO backdrop-filter.

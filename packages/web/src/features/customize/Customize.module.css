@@ -238,10 +238,10 @@
 .stateWarn {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--accent);
+  /* The whole box carries the accent, not a bar on its left edge. */
+  border: 1px solid var(--aside-line-accent);
   border-radius: var(--radius-input);
-  background: var(--bg);
+  background: var(--aside-bg-accent);
   font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--text-dim);
@@ -453,13 +453,13 @@
   border: none;
   outline: none;
 }
+/* The whole box carries the accent, not a bar on its left edge. */
 .presetWarn {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--accent);
+  border: 1px solid var(--aside-line-accent);
   border-radius: var(--radius-input);
-  background: var(--bg);
+  background: var(--aside-bg-accent);
   font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--text-dim);

@@ -11,9 +11,11 @@
  *
  * Two things that keep it glass and keep it elegant:
  *   1. Real blur belongs to the fixed chrome only (header, sidebar, inspector,
- *      summary). The 1,133-card grid is unvirtualised — a backdrop-filter per
- *      card would repaint 1,133 offscreen buffers on every scroll. Cards get
- *      translucency + an edge highlight, never blur. See ComponentCard.
+ *      summary). The card grid is virtualized now, but a backdrop-filter per
+ *      card would still repaint an offscreen buffer for every card in the
+ *      window on every scroll frame — the cheapest surface to blur is the one
+ *      that never moves. Cards get translucency + an edge highlight, never
+ *      blur. See ComponentCard.
  *   2. Glass lowers effective contrast, so every glass surface carries an
  *      opaque fallback and body text stays in ink, never a gem colour.
  */
@@ -85,6 +87,21 @@
   --danger: oklch(55% 0.13 25); /* garnet */
   --warn: oklch(62% 0.09 60); /* amber, dusty */
   --ok: oklch(58% 0.085 162); /* jade */
+
+  /* ---- Asides: caveats, limitations, heuristic notes. ----
+     These used to be marked with a coloured bar down the left edge. That
+     pattern is banned here (see DESIGN.md): it is the same "second encoding"
+     mistake the rank spine was — a stripe restating in colour what the text
+     already says — and a stack of them turns every panel into a ladder of
+     stripes. An aside is set apart by its SURFACE instead: a recessed tint the
+     eye reads as "this is a different kind of statement", with the whole plane
+     carrying the tone rather than one edge shouting it. Neutral by default;
+     the toned variants only when the aside reports a real limitation. */
+  --aside-bg: color-mix(in oklch, var(--text) 4%, transparent);
+  --aside-bg-warn: color-mix(in oklch, var(--warn) 12%, transparent);
+  --aside-bg-accent: color-mix(in oklch, var(--accent) 9%, transparent);
+  --aside-line-warn: color-mix(in oklch, var(--warn) 30%, var(--line));
+  --aside-line-accent: color-mix(in oklch, var(--accent) 30%, var(--line));
 
   /* ---- The aurora behind the glass — what the frost refracts. Very low
           intensity: lilac, aquamarine, and a warm blush, so the sheen has

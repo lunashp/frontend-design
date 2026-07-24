@@ -9,6 +9,28 @@ components, extract portable code, and re-theme it.
 - Node >= 20.11. TypeScript. Vitest for unit tests. Playwright for browser/E2E.
 - Packages: `packages/core`, `packages/host`, `packages/web`, `packages/mcp`.
 
+## UI work: read `packages/web/DESIGN.md` FIRST
+
+Any change to `packages/web` that a user can see — colour, spacing, type, a new
+component, a new state — is governed by **`packages/web/DESIGN.md`** ("Moonstone").
+
+It is the **only** design direction for this app, and it overrides generic design
+guidance from any other source (personal rulesets, framework defaults, a library's
+look, a menu of "style directions"). Those describe options for a project that has
+not chosen yet; this one has chosen. Values live in `packages/web/src/styles/tokens.css`
+— never hardcode a colour, size, radius or duration in a module.
+
+Two things it will stop you doing, both of which read as machine-generated UI:
+
+- **Coloured left-border "emphasis" rails are banned.** Use the aside surface
+  (`--aside-bg` / `--aside-bg-warn` / `--aside-bg-accent`) instead. Structural
+  left borders — a panel's own edge, a segmented-control divider — are fine.
+- **Never state one fact in two visual channels.** If a chip says it in words,
+  a colour must not repeat it.
+
+If a surface genuinely needs a treatment the document does not have, add it to
+the document *with its reason* first, then build it.
+
 ## Verification gate (MUST pass before declaring work done)
 
 Run these for real and read the output. **Do not claim success without actually

@@ -98,25 +98,19 @@
   padding: 0;
   list-style: none;
 }
+/* No severity rail down the left edge. `.impact` next to the rule id already
+   states the severity IN WORDS and carries the colour on its own chip — a bar
+   repeating it a third time is decoration wearing the costume of information,
+   and a list of findings became a ladder of coloured stripes. The finding is a
+   plain card; severity is the chip's job alone. */
 .finding {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  padding: var(--space-3);
   background: var(--bg);
   border: 1px solid var(--line);
-  border-left-width: 3px;
   border-radius: var(--radius-card);
-}
-.finding[data-impact='critical'],
-.finding[data-impact='serious'] {
-  border-left-color: var(--danger);
-}
-.finding[data-impact='moderate'] {
-  border-left-color: var(--warn);
-}
-.finding[data-impact='minor'] {
-  border-left-color: var(--accent);
 }
 
 .findingHead {
@@ -223,10 +217,13 @@
   font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--text-faint);
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--line);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--aside-bg);
 }
+/* The whole plane takes the amber, so the caveat cannot be skimmed past — the
+   tint is the signal, not a stripe on one edge. */
 .disclosure[data-stubbed='true'] {
   color: var(--warn);
-  border-left-color: color-mix(in oklch, var(--warn) 40%, transparent);
+  background: var(--aside-bg-warn);
 }

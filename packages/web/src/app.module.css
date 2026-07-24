@@ -42,6 +42,19 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The header's right-hand group: project chip + export/compare/kit. It wraps —
+   four controls plus a path do not fit beside the brand on a narrow screen, and
+   a nowrap row simply pushes them past the edge. */
+.headerActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  min-width: 0;
 }
 .mark {
   display: grid;
@@ -83,6 +96,7 @@
   border-radius: var(--radius-pill);
   background: var(--surface);
   font-size: var(--text-sm);
+  min-width: 0;
 }
 .frameworkDot {
   width: 7px;
@@ -102,6 +116,12 @@
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* The scanned folder name is arbitrary length; let it clamp rather than push
+     the chip past the edge of a narrow header. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .sidebar {
@@ -211,8 +231,15 @@
   }
 }
 
+/* SPECIFICITY, not the media query, decides these. A media query adds none, so a
+   bare `.shell` (0,1,0) in here LOSES to `.shell[data-inspector='hidden']`
+   (0,2,0) above and the layout silently never collapses — at 320px the sidebar
+   kept its full 288px and main was left 64px wide. Matching the attribute makes
+   these (0,2,0) too, and being later in the file they win. Any future rule that
+   qualifies `.shell` further must be repeated here. */
 @media (max-width: 1180px) {
-  .shell {
+  .shell,
+  .shell[data-inspector] {
     grid-template-columns: 260px 1fr;
     grid-template-areas:
       'header header'
@@ -224,12 +251,23 @@
 }
 
 @media (max-width: 720px) {
-  .shell {
+  .shell,
+  .shell[data-inspector] {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
     grid-template-areas:
       'header'
       'sidebar'
       'main';
+  }
+  /* The header is two groups side by side at desktop; at this width they stack
+     rather than shoving the actions off the right edge. */
+  .header {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+  }
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

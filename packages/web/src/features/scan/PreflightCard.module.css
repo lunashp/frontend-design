@@ -4,7 +4,6 @@
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5);
-  padding-left: calc(var(--space-5) + 4px);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -12,22 +11,26 @@
   overflow: hidden;
 }
 
-/* A tone spine down the leading edge — the card's verdict read before any word. */
-.card::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--tone);
-}
+/* There is no tone spine down the leading edge. The `.confidence` pill beside
+   the name already carries the verdict — as a tinted pill, a dot, AND a number —
+   so a coloured bar was a fourth encoding of one fact, and the exact banned
+   pattern in DESIGN.md.
+   What survives of "read the verdict before any word" is the SURFACE: a healthy
+   profile stays neutral (health is the default and does not need announcing),
+   and only a card reporting a real problem tints, so the tint means something
+   when you see it. */
 .card[data-tone='ok'] {
   --tone: var(--ok);
 }
 .card[data-tone='warn'] {
   --tone: var(--warn);
+  border-color: var(--aside-line-warn);
+  background: color-mix(in oklch, var(--warn) 7%, var(--surface));
 }
 .card[data-tone='danger'] {
   --tone: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 30%, var(--line));
+  background: color-mix(in oklch, var(--danger) 7%, var(--surface));
 }
 
 .head {

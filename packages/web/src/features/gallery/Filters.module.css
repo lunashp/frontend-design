@@ -23,6 +23,11 @@
 }
 .search input {
   flex: 1;
+  /* A flex item's automatic minimum is its intrinsic min width, and an <input>'s
+     is its `size` attribute default (~20ch) — wider than a 260px sidebar's
+     field. Without opting out, the input refuses to shrink and shoves the `/`
+     keycap out through the right edge of the field. */
+  min-width: 0;
   padding: var(--space-3) 0;
   background: none;
   border: none;

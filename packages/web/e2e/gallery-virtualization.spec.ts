@@ -224,6 +224,37 @@ async function responsive(browser: Browser, url: string): Promise<void> {
         assert.equal(overflow, false, `grid overflows horizontally at ${width}px`);
         return 'no sideways scroll';
       });
+
+      // A card must never be laid out wider than the cell it was given. This
+      // does NOT show up as horizontal overflow — the scroll container clips —
+      // it shows up as cards painting on top of each other, which is how it
+      // shipped twice. The cause is that a grid item's automatic minimum size is
+      // its min-content, and a card's min-content is its un-wrappable file path;
+      // both .wrap and .card set `min-width: 0` to opt out.
+      await scenario(`no card is wider than its cell at ${width}px`, async () => {
+        const worst = await page.evaluate(() => {
+          let over = 0;
+          let name = '';
+          for (const row of document.querySelectorAll('[data-row]')) {
+            for (const cell of row.children) {
+              const card = cell.querySelector('button');
+              if (!card) continue;
+              const bleed = card.getBoundingClientRect().width - cell.getBoundingClientRect().width;
+              if (bleed > over) {
+                over = bleed;
+                name = card.querySelector('h3')?.textContent?.trim() ?? '';
+              }
+            }
+          }
+          return { over: Math.round(over), name };
+        });
+        assert.ok(
+          worst.over <= 1,
+          `card "${worst.name}" is ${worst.over}px wider than its cell at ${width}px — it overlaps its neighbour`,
+        );
+        return 'every card fits its cell';
+      });
+
       columns[width] = await topRowColumns(page);
     } finally {
       await page.close();
