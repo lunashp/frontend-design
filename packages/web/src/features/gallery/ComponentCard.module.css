@@ -236,6 +236,13 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-dim);
+  /* A flex item defaults to min-width:auto, which for nowrap text is the FULL
+     text width — so a long path refused to shrink and spilled out of the card
+     over its neighbour. block + min-width:0 + max-width lets it actually clamp,
+     which is what makes text-overflow:ellipsis fire. */
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

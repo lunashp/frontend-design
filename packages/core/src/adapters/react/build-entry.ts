@@ -72,7 +72,9 @@ class __ErrorBoundary extends React.Component<{ children: React.ReactNode }, { e
       // component, not a fault of the tool. Say so calmly and point at the code,
       // rather than a red alert that reads as "the tool is broken".
       return (
-        <div style={{ font: '13px/1.6 system-ui, sans-serif', color: '#3f4650', padding: '16px 18px', maxWidth: 460 }}>
+        // Marked so a thumbnail shot skips it: a card showing a cropped paragraph
+        // of explanation is worse than the component's monogram placeholder.
+        <div data-ce-unrenderable="1" style={{ font: '13px/1.6 system-ui, sans-serif', color: '#3f4650', padding: '16px 18px', maxWidth: 460 }}>
           <strong style={{ display: 'block', marginBottom: 6, color: '#1f2530' }}>Needs app context to render live</strong>
           <span style={{ color: '#6b727c' }}>
             This component depends on something an isolated preview can't supply —

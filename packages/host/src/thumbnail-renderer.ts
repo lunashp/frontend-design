@@ -48,10 +48,20 @@ export type ThumbnailRenderer = (input: RenderThumbnailInput) => Promise<Buffer 
  * back to `#root`, then the viewport — the same target selection the pre-pool
  * renderer used, so the pixels are unchanged.
  */
-async function screenshotComponent(page: Page): Promise<Buffer> {
+async function screenshotComponent(page: Page): Promise<Buffer | null> {
+  // A component that can't render in isolation shows the boundary's explanation.
+  // Shooting THAT gives every such card a cropped paragraph of prose where a
+  // picture should be — worse than no thumbnail, so report none and let the card
+  // fall back to its monogram.
+  if (await page.$('[data-ce-unrenderable]')) return null;
+
   const target = (await page.$('#root > *')) ?? (await page.$('#root'));
-  if (target) return target.screenshot({ type: 'png' });
-  return page.screenshot({ type: 'png' });
+  if (!target) return page.screenshot({ type: 'png' });
+  // An empty render (zero-size box) photographs as a blank grey tile, which reads
+  // as broken; the monogram is the honest placeholder.
+  const box = await target.boundingBox();
+  if (!box || box.width < 2 || box.height < 2) return null;
+  return target.screenshot({ type: 'png' });
 }
 
 /** Bind a thumbnail renderer to a pool — `#root`'s child, screenshotted at 2x. */
