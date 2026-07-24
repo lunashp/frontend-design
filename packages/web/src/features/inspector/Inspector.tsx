@@ -15,19 +15,13 @@ import { VariantsMatrix } from '../variants/VariantsMatrix.js';
 import { PropTable } from './PropTable.js';
 import { AccessibilitySection } from './AccessibilitySection.js';
 import { WhereUsed } from './WhereUsed.js';
+import { BuildError } from './BuildError.js';
 import styles from './Inspector.module.css';
 
 // Variants sits with Preview — both are live renders — before the copy/re-theme
 // tabs. Adding it here is all app.tsx needs: it only holds the active `Tab`.
 export const TABS = ['Details', 'Preview', 'Variants', 'Portable', 'Customize'] as const;
 export type Tab = (typeof TABS)[number];
-const ENABLED_TABS: ReadonlySet<Tab> = new Set<Tab>([
-  'Details',
-  'Preview',
-  'Variants',
-  'Portable',
-  'Customize',
-]);
 
 /** Tabbable descendants, for the slide-over's focus trap. */
 const FOCUSABLE =
@@ -350,22 +344,17 @@ export function Inspector({
       </header>
 
       <nav className={styles.tabs} aria-label="Inspector views">
-        {TABS.map((t) => {
-          const enabled = ENABLED_TABS.has(t);
-          return (
-            <button
-              key={t}
-              type="button"
-              className={styles.tab}
-              data-active={t === tab}
-              disabled={!enabled}
-              onClick={() => enabled && onTabChange(t)}
-              title={enabled ? undefined : 'Arrives in a later phase'}
-            >
-              {t}
-            </button>
-          );
-        })}
+        {TABS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            className={styles.tab}
+            data-active={t === tab}
+            onClick={() => onTabChange(t)}
+          >
+            {t}
+          </button>
+        ))}
       </nav>
 
       <div className={styles.body}>
@@ -374,7 +363,11 @@ export function Inspector({
           (artifactState.status === 'loading' || artifactState.status === 'idle' ? (
             <div className={styles.loading}>Extracting component & preparing the sandbox…</div>
           ) : artifactState.status === 'error' || !artifactState.artifact ? (
-            <div className={styles.loadError}>{artifactState.error ?? 'Failed to build artifact.'}</div>
+            <BuildError
+              error={artifactState.error}
+              componentName={descriptor.name}
+              onRetry={artifactState.reload}
+            />
           ) : tab === 'Preview' ? (
             <PreviewPane artifact={artifactState.artifact} projectRoot={projectRoot} />
           ) : tab === 'Variants' ? (

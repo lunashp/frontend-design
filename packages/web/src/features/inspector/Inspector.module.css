@@ -262,16 +262,11 @@
   background: var(--accent-ink);
 }
 
-.loading,
-.loadError {
+.loading {
   padding: var(--space-6) var(--space-4);
   text-align: center;
   font-size: var(--text-sm);
   color: var(--text-dim);
   border: 1px dashed var(--line);
   border-radius: var(--radius-card);
-}
-.loadError {
-  color: var(--danger);
-  border-color: color-mix(in oklch, var(--danger) 30%, transparent);
 }

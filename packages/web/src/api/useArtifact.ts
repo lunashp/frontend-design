@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getArtifact } from './client.js';
 import type { ComponentArtifact } from './types.js';
 
@@ -8,6 +8,13 @@ export interface ArtifactState {
   status: Status;
   artifact: ComponentArtifact | null;
   error: string | null;
+  /**
+   * Re-run the build for the current component, bypassing the memo. A build can
+   * fail transiently (the host was mid-restart, a file was being written); the
+   * error UI wires this to a Retry button so the four live tabs are not a dead
+   * end after one failure.
+   */
+  reload: () => void;
 }
 
 /**
@@ -49,12 +56,22 @@ export function clearArtifactCache(): void {
  * A cache hit resolves synchronously so re-opening a component never re-bundles.
  */
 export function useArtifact(projectRoot: string, id: string | null): ArtifactState {
-  const [state, setState] = useState<ArtifactState>({
+  const [state, setState] = useState<Omit<ArtifactState, 'reload'>>({
     status: 'idle',
     artifact: null,
     error: null,
   });
+  // Bumping this re-runs the effect. Retry drops the failed key from the memo
+  // first, so a retry after a transient failure actually rebuilds rather than
+  // re-reading a cache that a failed build never populated anyway.
+  const [nonce, setNonce] = useState(0);
 
+  const reload = useCallback(() => {
+    if (id && projectRoot) artifactCache.delete(artifactCacheKey(projectRoot, id));
+    setNonce((n) => n + 1);
+  }, [projectRoot, id]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `nonce` is the re-run SIGNAL (Retry bumps it), not a value the body reads — it belongs in the deps precisely so a retry re-runs the build.
   useEffect(() => {
     if (!id || !projectRoot) {
       setState({ status: 'idle', artifact: null, error: null });
@@ -88,7 +105,7 @@ export function useArtifact(projectRoot: string, id: string | null): ArtifactSta
     return () => {
       active = false;
     };
-  }, [projectRoot, id]);
+  }, [projectRoot, id, nonce]);
 
-  return state;
+  return { ...state, reload };
 }
