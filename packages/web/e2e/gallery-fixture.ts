@@ -58,12 +58,16 @@ function makeComponent(index: number): ComponentSummary {
       propCount: propNames.length,
     },
     propModel: {
+      // A synthetic component declaring its own props: nothing here wraps a
+      // library, so every prop is `own` and the own count is the full list.
       props: propNames.map((name) => ({
         name,
         tsType: 'string',
         kind: 'string' as const,
         required: false,
+        origin: 'own' as const,
       })),
+      ownPropCount: propNames.length,
     },
   };
 }

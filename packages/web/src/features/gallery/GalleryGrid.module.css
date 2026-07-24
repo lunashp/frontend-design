@@ -21,6 +21,17 @@
   gap: var(--space-4);
 }
 
+/* Stands in for a row that arrow-key navigation is heading for but that is not
+   mounted yet (the grid is virtualized). Nothing to see — it exists only as a
+   scrollIntoView target, so the browser resolves the scroll container for us. */
+.scrollMarker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
 .empty {
   display: flex;
   flex-direction: column;

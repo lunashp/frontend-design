@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScan } from './features/scan/useScan.js';
 import { usePreflight } from './features/scan/usePreflight.js';
 import { preflightView } from './features/scan/preflight-view.js';
 import { PreflightCard } from './features/scan/PreflightCard.js';
 import { ScanForm } from './features/scan/ScanForm.js';
 import { Filters } from './features/gallery/Filters.js';
+import { ShortcutHints } from './features/gallery/ShortcutHints.js';
+import { isTextEntry } from './features/gallery/shortcuts.js';
 import { CollectionSummary } from './features/gallery/CollectionSummary.js';
 import { ScanIssues } from './features/gallery/ScanIssues.js';
-import { GalleryGrid } from './features/gallery/GalleryGrid.js';
+import { GalleryGrid, type FocusRequest } from './features/gallery/GalleryGrid.js';
 import { Inspector, type Tab } from './features/inspector/Inspector.js';
-import { applyFilters, DEFAULT_FILTERS, type FilterState } from './lib/filter.js';
+import { applyFilters, type FilterState } from './lib/filter.js';
+import { decodeUrlState, encodeUrlState } from './lib/url-state.js';
 import { directoryFacets } from './lib/source-area.js';
 import {
   getCustomization,
@@ -52,13 +55,17 @@ function useMediaQuery(query: string): boolean {
 export function App() {
   const scan = useScan();
   const { preflight, load: loadPreflight } = usePreflight();
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The view is restored from the query string ONCE, at mount; after that React
+  // state is the source of truth and the URL follows it (the effect below).
+  // Reading `location` during render instead would fight that effect.
+  const [restored] = useState(() => decodeUrlState(window.location.search));
+  const [filters, setFilters] = useState<FilterState>(restored.filters);
+  const [selectedId, setSelectedId] = useState<string | null>(restored.selectedId);
   const [autoScanned, setAutoScanned] = useState(false);
   // Inspector state lives here, above the panes that edit it: those unmount on
   // every tab switch and every card selection, and used to take the work with
   // them. The tab is sticky too — reopening on Customize is the point.
-  const [tab, setTab] = useState<Tab>('Details');
+  const [tab, setTab] = useState<Tab>(restored.tab);
   const [customizations, setCustomizations] = useState<CustomizationMap>(() => new Map());
   // The kit basket: which components to harvest together. Component ids are
   // project-specific (hashes of file+export), so a new scan target invalidates
@@ -68,6 +75,9 @@ export function App() {
   // Compare reuses the SAME basket set (it IS "the components I'm weighing"), so
   // there is no second selection to track — only which overlay is open.
   const [compareOpen, setCompareOpen] = useState(false);
+  // Focus the gallery must take back, sent when the docked inspector closes from
+  // the keyboard. See the Escape handler below.
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
   const compact = useMediaQuery(COMPACT_QUERY);
 
   // Auto-scan the host's default project once, for an immediate first view — and
@@ -121,8 +131,78 @@ export function App() {
   );
   const selected = result?.components.find((c) => c.descriptor.id === selectedId) ?? null;
 
+  // Keep the address bar in step with the view, so a reload lands where the user
+  // was — after a scan that costs minutes, being dumped back at an unfiltered
+  // gallery is the expensive failure. replaceState, never push: a filter
+  // keystroke is a state change, not a navigation, and one history entry per
+  // typed character would make Back useless. Comparing the composed URL to the
+  // current one keeps a re-render from rewriting an identical address.
+  useEffect(() => {
+    const search = encodeUrlState({ filters, selectedId, tab });
+    const { pathname, hash } = window.location;
+    const next = `${pathname}${search ? `?${search}` : ''}${hash}`;
+    if (next !== `${pathname}${window.location.search}${hash}`) {
+      window.history.replaceState(window.history.state, '', next);
+    }
+  }, [filters, selectedId, tab]);
+
+  // Nothing here pushes history entries, so Back/Forward move between entries
+  // this app did not create. When the browser restores one, adopt what its URL
+  // carries instead of leaving the address bar and the view disagreeing.
+  useEffect(() => {
+    const onPopState = () => {
+      const state = decodeUrlState(window.location.search);
+      setFilters(state.filters);
+      setSelectedId(state.selectedId);
+      setTab(state.tab);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // A component id carried in from a previous session belongs to whatever
+  // project was scanned then — ids are per-project hashes of file+export. Once a
+  // scan is in and the id is not among its components, drop it, rather than let
+  // the URL keep claiming a selection the inspector cannot show.
+  useEffect(() => {
+    if (result && selectedId && !selected) setSelectedId(null);
+  }, [result, selectedId, selected]);
+
+  // Escape closes the DOCKED inspector. Not when it is the modal slide-over
+  // (compact): Inspector owns Escape there, along with the focus trap and the
+  // focus restore that belong to it, and a second handler would double-fire.
+  // Not while the kit or compare drawer is open either — each is a modal that
+  // owns Escape for itself, and one keypress must dismiss one thing.
+  useEffect(() => {
+    if (!selectedId || compact || kitOpen || compareOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A text field owns Escape (the filter clears its query on it), and
+      // anything that already handled the key has first claim.
+      if (event.key !== 'Escape' || event.defaultPrevented || isTextEntry(event.target)) return;
+      // Closing the panel destroys whatever inside it had focus, and the browser
+      // then parks focus on <body> — so the next Tab restarts at the top of the
+      // document instead of at the gallery. Hand focus back to the card that
+      // opened the panel, which is where the user was. Only when focus was
+      // actually inside: closing it from the grid must not yank the view.
+      const insidePanel =
+        event.target instanceof Node && panelRef.current?.contains(event.target) === true;
+      if (insidePanel) {
+        const index = filtered.findIndex((c) => c.descriptor.id === selectedId);
+        if (index >= 0) setFocusRequest((r) => ({ index, nonce: (r?.nonce ?? 0) + 1 }));
+      }
+      setSelectedId(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedId, compact, kitOpen, compareOpen, filtered]);
+
   // Stable identity: the slide-over's focus trap keys its effect off this.
   const closeInspector = useCallback(() => setSelectedId(null), []);
+
+  // The docked panel's element, so the Escape handler above can tell "focus was
+  // in the inspector" from "focus was in the grid". The modal slide-over is not
+  // covered here — it runs its own trap and restore inside Inspector.
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const onCustomizationChange = useCallback(
     (state: CustomizationState) =>
       setCustomizations((map) => (selectedId ? setCustomization(map, selectedId, state) : map)),
@@ -215,6 +295,9 @@ export function App() {
       <aside className={styles.sidebar}>
         <ScanForm controller={scan} />
         {result && <Filters filters={filters} onChange={setFilters} facets={facets} />}
+        {/* Only once there is a gallery to navigate — the shortcuts are about
+            cards and the inspector, neither of which exists before a scan. */}
+        {result && <ShortcutHints />}
       </aside>
 
       <main className={styles.main}>
@@ -265,6 +348,7 @@ export function App() {
               projectRoot={result.projectRoot}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              focusRequest={focusRequest}
             />
           </div>
         ) : preflightCard ? (
@@ -296,7 +380,11 @@ export function App() {
           </>
         )
       ) : (
-        selected && <div className={styles.inspector}>{inspector}</div>
+        selected && (
+          <div ref={panelRef} className={styles.inspector}>
+            {inspector}
+          </div>
+        )
       )}
 
         {kitOpen && result && (

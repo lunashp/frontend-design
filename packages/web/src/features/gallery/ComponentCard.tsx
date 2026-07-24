@@ -4,6 +4,7 @@ import { useBasket } from '../kit/basket-context.js';
 import { KIND_LABEL } from '../../lib/taxonomy.js';
 import { RankChip } from './RankChip.js';
 import { ContextMeter } from './ContextMeter.js';
+import { propSummary } from './prop-summary.js';
 import {
   naturalCssSize,
   nextThumbnailState,
@@ -29,7 +30,10 @@ export function ComponentCard({
   onSelect: () => void;
 }) {
   const { descriptor, classification, propModel, usage } = component;
-  const propCount = propModel.props.length;
+  // Leads with the props the component DECLARES. `props.length` counts the
+  // wrapped library's contract too, so a MUI wrapper that adds one prop used to
+  // read "64 props" — a number about MUI, not about this component.
+  const props = propSummary(propModel);
   const usedBy = usage?.usedByCount ?? 0;
   const basket = useBasket();
   const picked = basket.has(descriptor.id);
@@ -100,9 +104,14 @@ export function ComponentCard({
         <span className={styles.path}>{shortPath(descriptor.filePath, projectRoot)}</span>
 
         <div className={styles.foot}>
-          <span className={styles.props}>
-            <span className={styles.propNum}>{propCount}</span>
-            {propCount === 1 ? 'prop' : 'props'}
+          <span className={styles.props} title={props.title}>
+            <span className={styles.propNum}>{props.lead}</span>
+            {props.noun}
+            {props.inherited > 0 && (
+              // Secondary, never hidden: the inherited surface is real and
+              // matters when porting — it just isn't this component's API.
+              <span className={styles.inherited}>+{props.inherited}</span>
+            )}
           </span>
           {usage && (
             // Reuse signal: imports from the SCANNED source only. A component used

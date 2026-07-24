@@ -14,15 +14,35 @@ import '../../src/styles/global.css';
 import { GalleryGrid } from '../../src/features/gallery/GalleryGrid.js';
 import { GALLERY_COMPONENTS } from '../gallery-fixture.js';
 
+/** The index the focus-restore case aims at: far outside the mounted window. */
+const FAR_INDEX = 900;
+
 function Harness() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Stands in for app.tsx handing focus back to the gallery when the docked
+  // inspector closes. Only the GRID half of that contract is exercised here —
+  // "a request focuses that card, mounted or not" — which is the part with the
+  // virtualization hazard in it.
+  const [focusRequest, setFocusRequest] = useState<{ index: number; nonce: number } | null>(null);
   return (
-    <GalleryGrid
-      components={GALLERY_COMPONENTS}
-      projectRoot="/fixture"
-      selectedId={selectedId}
-      onSelect={setSelectedId}
-    />
+    <>
+      <GalleryGrid
+        components={GALLERY_COMPONENTS}
+        projectRoot="/fixture"
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        focusRequest={focusRequest}
+      />
+      {/* AFTER the grid: the tab-order scenario Tabs from `#before` and must land
+          on the first card, so nothing focusable may sit between them. */}
+      <button
+        type="button"
+        id="send-focus"
+        onClick={() => setFocusRequest((r) => ({ index: FAR_INDEX, nonce: (r?.nonce ?? 0) + 1 }))}
+      >
+        restore focus to card {FAR_INDEX}
+      </button>
+    </>
   );
 }
 

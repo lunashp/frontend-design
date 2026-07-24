@@ -32,6 +32,25 @@
   color: var(--text-faint);
 }
 
+/* The `/` shortcut, stated on the control it focuses. It fades out once the
+   field has focus: at that point the key is a literal slash, and advertising it
+   as a shortcut would be a lie. */
+.searchKey {
+  flex: none;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-faint);
+  background: color-mix(in oklch, var(--text) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  transition: opacity var(--dur) var(--ease);
+}
+.search:focus-within .searchKey {
+  opacity: 0;
+}
+
 .group {
   display: flex;
   flex-direction: column;

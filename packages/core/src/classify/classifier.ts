@@ -16,7 +16,7 @@ import { componentRole } from './role.js';
 import { contextDependencyScore } from './context-score.js';
 
 /** Shared empty prop contract, so the default arg never allocates per call. */
-const NO_PROPS: PropModel = { props: [] };
+const NO_PROPS: PropModel = { props: [], ownPropCount: 0 };
 
 function computeConfidence(s: ClassificationSignals): number {
   let c = 0.6;

@@ -176,6 +176,32 @@ async function run(browser: Browser, url: string): Promise<void> {
       assert.equal(pressed, 'true', 'Enter on a focused card did not select it');
       return 'card focused and activated via keyboard';
     });
+
+    await scenario('a focus request reaches a card that is not mounted', async () => {
+      // The app sends one of these when the docked inspector closes with focus
+      // inside it, so that focus returns to the card instead of falling to
+      // <body>. The target is routinely outside the mounted window, which is the
+      // whole hazard: the grid must scroll it in and focus it once it exists.
+      // Back to the top, so the far target is genuinely outside the window.
+      await page.locator('#scroller').evaluate((el) => el.scrollTo({ top: 0 }));
+      const sender = page.locator('#send-focus');
+      await sender.focus();
+      const mountedBefore = await page.evaluate(
+        () => document.querySelectorAll('h3').length,
+      );
+      await sender.click();
+      await page.waitForFunction(
+        () => document.activeElement?.querySelector('h3') != null,
+        null,
+        { timeout: REVEAL_TIMEOUT_MS },
+      );
+      const landed = await page.evaluate(
+        () => document.activeElement?.querySelector('h3')?.textContent?.trim() ?? null,
+      );
+      assert.ok(landed, 'focus did not land on a card');
+      assert.notEqual(landed, FIRST_CARD_NAME, 'focus never left the first card');
+      return `focus landed on ${landed} (was ${mountedBefore} cards mounted, target off-window)`;
+    });
   } finally {
     await page.close();
   }

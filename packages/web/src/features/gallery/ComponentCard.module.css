@@ -274,3 +274,13 @@
   font-weight: 600;
   color: var(--text-dim);
 }
+
+/* The inherited count sits behind the own count: same row, clearly lesser —
+   present because the surface is real, quiet because it is not this
+   component's API. */
+.inherited {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  opacity: 0.72;
+}

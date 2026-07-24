@@ -1,7 +1,9 @@
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import type { AtomicLevel, ComponentKind, ComponentRole } from '../../api/types.js';
 import { KIND_LABEL, RANKS, RANK_ORDER } from '../../lib/taxonomy.js';
 import { toggle, type FilterState, type SortOrder } from '../../lib/filter.js';
 import type { DirectoryFacet } from '../../lib/source-area.js';
+import { isTextEntry } from './shortcuts.js';
 import styles from './Filters.module.css';
 
 const KINDS: ComponentKind[] = ['presentational', 'container', 'layout'];
@@ -50,6 +52,36 @@ export function Filters({
 }) {
   const set = (patch: Partial<FilterState>) => onChange({ ...filters, ...patch });
   const dirs = facetOrder(facets);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // `/` jumps here from anywhere — the search-first reflex every catalogue has.
+  // The listener lives with the input it focuses, so there is no ref to thread
+  // through the app and it unregisters with the sidebar it belongs to.
+  useEffect(() => {
+    const onSlash = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+      // Someone typing `/Users/…` into the scan form means the character, not
+      // the shortcut. Stealing focus mid-path made that field unusable.
+      if (isTextEntry(document.activeElement)) return;
+      event.preventDefault();
+      const input = inputRef.current;
+      input?.focus();
+      // Select rather than append: `/` on a stale query means "search again".
+      input?.select();
+    };
+    document.addEventListener('keydown', onSlash);
+    return () => document.removeEventListener('keydown', onSlash);
+  }, []);
+
+  // Escape in the field clears it and steps back out to the gallery. It stops
+  // there too: app.tsx also closes the inspector on Escape, and one keypress
+  // wiping the query AND the selection is a surprise, not a shortcut.
+  const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Escape') return;
+    event.stopPropagation();
+    if (filters.query) set({ query: '' });
+    event.currentTarget.blur();
+  };
 
   return (
     <div className={styles.filters}>
@@ -58,12 +90,19 @@ export function Filters({
           ⌕
         </span>
         <input
+          ref={inputRef}
           type="search"
           placeholder="Filter by name or path"
           value={filters.query}
           onChange={(e) => set({ query: e.target.value })}
+          onKeyDown={onSearchKeyDown}
           aria-label="Filter components"
         />
+        {/* States the shortcut at the thing it operates on — the cheapest kind of
+            discoverability, and it doubles as the "you can type here" cue. */}
+        <kbd className={styles.searchKey} aria-hidden>
+          /
+        </kbd>
       </label>
 
       <button

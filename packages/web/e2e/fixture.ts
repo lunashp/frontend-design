@@ -41,7 +41,7 @@ export const FIXTURE_COMPONENT: ComponentSummary = {
     isClientComponent: false,
     propCount: 0,
   },
-  propModel: { props: [] },
+  propModel: { props: [], ownPropCount: 0 },
 };
 
 export const FIXTURE_ARTIFACT: ComponentArtifact = {

@@ -31,6 +31,15 @@ const DOCGEN_OPTIONS: rdt.ParserOptions = {
   shouldIncludePropTagMap: true,
   // Drop props inherited from node_modules (e.g. DOM ButtonHTMLAttributes) so a
   // component's control panel shows only its own props.
+  //
+  // CAVEAT — this filters almost nothing in practice, so do NOT read it as the
+  // own/inherited split. `prop.parent` is undefined for every prop of a real MUI
+  // wrapper (measured: 0/63 CustomAvatar, 0/64 CustomChip, 0/82 CustomTextField):
+  // docgen only fills `parent` when a prop's declaration sits directly inside an
+  // interface/type-alias node, and MUI's props arrive via mapped + intersection
+  // types whose members never do. The split that DOES work is computed from the
+  // TypeScript checker in extract-props.ts (`PropControl.origin`). This stays
+  // because it is still correct whenever `parent` happens to be populated.
   propFilter: (prop) => !prop.parent || !/node_modules/.test(prop.parent.fileName),
 };
 

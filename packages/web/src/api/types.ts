@@ -68,6 +68,14 @@ export interface Classification {
   confidence: number;
 }
 
+/**
+ * Where a prop is DECLARED. A wrapper around a library component absorbs that
+ * library's whole prop contract, so a component that adds two props reports 64:
+ * `own` is the number that describes the component, `inherited` the library's.
+ * `unknown` = the checker could not place it; never counted as own.
+ */
+export type PropOrigin = 'own' | 'inherited' | 'unknown';
+
 export interface PropControl {
   name: string;
   tsType: string;
@@ -76,10 +84,19 @@ export interface PropControl {
   defaultValue?: string;
   required: boolean;
   description?: string;
+  origin: PropOrigin;
+  /** For `inherited` props: the installed package that declares it. */
+  originPackage?: string;
 }
 
 export interface PropModel {
   props: PropControl[];
+  /**
+   * How many of `props` the component declares itself. `null` means "not
+   * determined" (the props type could not be resolved) — NOT zero; the UI must
+   * fall back to the plain total rather than claim the component owns none.
+   */
+  ownPropCount: number | null;
 }
 
 /**
