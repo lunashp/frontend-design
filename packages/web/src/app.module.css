@@ -9,6 +9,16 @@
   overflow: hidden;
 }
 
+/* With nothing selected the detail column has nothing to show, and holding 380px
+   for a placeholder cost the catalogue a third of its width — two cards per row
+   instead of three. Give the space back until a component is actually picked. */
+.shell[data-inspector='hidden'] {
+  grid-template-columns: 288px 1fr;
+  grid-template-areas:
+    'header header'
+    'sidebar main';
+}
+
 .header {
   grid-area: header;
   display: flex;

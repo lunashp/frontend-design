@@ -174,7 +174,9 @@ export function App() {
 
   return (
     <BasketContext.Provider value={basketControls}>
-      <div className={styles.shell}>
+      {/* The docked detail column only earns its 380px once something is selected;
+          until then the catalogue takes the width (2 cards per row -> 3). */}
+      <div className={styles.shell} data-inspector={!compact && selected ? 'open' : 'hidden'}>
         <header className={styles.header}>
           <div className={styles.brand}>
             <span className={styles.mark} aria-hidden>
@@ -294,7 +296,7 @@ export function App() {
           </>
         )
       ) : (
-        <div className={styles.inspector}>{inspector}</div>
+        selected && <div className={styles.inspector}>{inspector}</div>
       )}
 
         {kitOpen && result && (
