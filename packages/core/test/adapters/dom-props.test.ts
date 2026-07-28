@@ -9,9 +9,17 @@ describe('isDomNoiseProp — drops React inherited DOM/ARIA surface', () => {
   });
 
   it('drops the HTML global passthrough attributes', () => {
-    for (const n of ['about', 'accessKey', 'className', 'style', 'id', 'role', 'tabIndex', 'title', 'dir', 'lang', 'hidden', 'spellCheck', 'dangerouslySetInnerHTML', 'suppressHydrationWarning']) {
+    for (const n of ['about', 'accessKey', 'className', 'style', 'id', 'role', 'tabIndex', 'dir', 'lang', 'hidden', 'spellCheck', 'dangerouslySetInnerHTML', 'suppressHydrationWarning']) {
       expect(isDomNoiseProp(n)).toBe(true);
     }
+  });
+
+  // `title` is an HTML global, but it is also one of the most common real design
+  // props — a dialog's, a card's, a section's. Dropping it removed a declared
+  // `title` from 89 components on the real target and left their previews as
+  // boxes with no words. It belongs with the ambiguous names kept below.
+  it('keeps `title` — a design prop far more often than DOM passthrough', () => {
+    expect(isDomNoiseProp('title')).toBe(false);
   });
 
   it('drops the exhaustive DOM event noise and every *Capture handler', () => {

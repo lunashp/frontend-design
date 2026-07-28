@@ -48,6 +48,37 @@ Every gate command above is **non-interactive** and must never wait for input.
 Do NOT put interactive commands (watch mode, bare `vitest`, `pnpm dev`, anything
 that prompts) into the gate — they hang a cloud session forever.
 
+### A green gate does NOT mean components render
+
+The gate proves the engine's **units**. It cannot see the rendered **outcome**,
+and that is where this tool's defects live. A census of a real 1,133-component
+target found only **75% of components showing any design at all** while 1,090
+unit tests were green — four separate causes, not one of them visible to a single
+assertion in the suite (a `false` visibility gate blanking every modal, a sample
+value crammed into icon slots, a dropped theme section, a `children` react-docgen
+silently omits).
+
+So for any change to **rendering, sample props, provider stubs, the theme
+rebuild, or prop extraction**, the gate is necessary and not sufficient. Run the
+census and read the table:
+
+```bash
+# terminal 1 — the host, pointed at a real React+TS project
+pnpm --filter @ce/host start -- --project /path/to/react-app
+# terminal 2
+pnpm --filter @ce/host census -- --project /path/to/react-app --min-ok 0.84
+```
+
+It opens every component's real preview and judges the rendered DOM. `--min-ok`
+turns it into a regression gate (non-zero exit below the floor). It is excluded
+from `pnpm test` on purpose: it needs a real project and a browser, neither of
+which a cloud VM has. **Compare against the previous run** — two of the fixes in
+this area caused regressions that only a second census caught.
+
+`packages/core/test/fixtures/hard-shapes` pins the shapes that have already
+broken, so those specific regressions DO fail in the node gate, with no browser
+and no external target. When the census finds a new shape, add it there.
+
 ## Cloud sessions (Claude Code on the web)
 
 - Dependencies auto-install via the `SessionStart` hook in `.claude/settings.json`

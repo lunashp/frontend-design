@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome lint --error-on-warnings .",
     "test:browser:thumbnail": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/thumbnail-render.spec.ts",
-    "test:browser:a11y": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/a11y-audit.spec.ts"
+    "test:browser:a11y": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/a11y-audit.spec.ts",
+    "census": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/render-census.ts"
   },
   "dependencies": {
     "@ce/core": "workspace:*",

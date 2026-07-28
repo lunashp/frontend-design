@@ -25,7 +25,12 @@ const HTML_GLOBAL_ATTRS: ReadonlySet<string> = new Set([
   'part', 'popover', 'popoverTarget', 'popoverTargetAction', 'prefix', 'property',
   'radioGroup', 'resource', 'results', 'role', 'security', 'slot', 'spellCheck',
   'style', 'suppressContentEditableWarning', 'suppressHydrationWarning', 'tabIndex',
-  'title', 'translate', 'typeof', 'unselectable', 'vocab',
+  'translate', 'typeof', 'unselectable', 'vocab',
+  // NOT here, though it is an HTML global: `title`. It is also one of the most
+  // common real design props — a dialog's, a card's, a section's — and dropping
+  // it removed a declared `title` from 89 components on the real target, leaving
+  // their previews as boxes with no words in them. It belongs with the other
+  // ambiguous names this filter deliberately keeps (`color`, `size`, `value`).
 ]);
 
 // Media / animation / transition / pointer / touch / wheel / scroll / load / error

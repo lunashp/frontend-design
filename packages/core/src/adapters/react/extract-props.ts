@@ -208,6 +208,39 @@ function resolvePropOrigins(
 }
 
 /**
+ * Put back a `children` that react-docgen dropped.
+ *
+ * react-docgen-typescript omits `children` when it carries no JSDoc description.
+ * That silently removes the single most important CONTENT prop: the preview then
+ * has nothing to put inside the component and renders an empty box. Measured on
+ * the real target, 68 components declare `children` and 52 of them (76%) lost it
+ * this way — a large share of the previews that showed a frame with no words.
+ *
+ * The TypeScript checker knows better, and `resolvePropOrigins` has already asked
+ * it for every property of the props type. So when the checker saw `children` and
+ * docgen did not, re-add it: as a `node`, which is what `children` always is.
+ */
+function withDeclaredChildren(
+  props: readonly PropControl[],
+  origins: ReadonlyMap<string, PropOriginInfo> | null,
+): PropControl[] {
+  const out = [...props];
+  const declared = origins?.get('children');
+  if (!declared || out.some((p) => p.name === 'children')) return out;
+  out.push({
+    name: 'children',
+    tsType: 'ReactNode',
+    kind: 'node',
+    // Optional is the safe report: a wrong "required" badge would be a claim
+    // about the component's API, and filling a node prop does not depend on it.
+    required: false,
+    origin: declared.origin,
+    ...(declared.packageName ? { originPackage: declared.packageName } : {}),
+  });
+  return out;
+}
+
+/**
  * Prop extraction was attempted and did not produce an answer. Thrown rather
  * than returning an empty PropModel: `{ props: [] }` is indistinguishable from
  * a component that genuinely takes no props, so the Details tab would state
@@ -251,13 +284,15 @@ export function extractProps(
   }
 
   const origins = resolvePropOrigins(descriptor, handle);
-  const props = Object.values(doc.props)
+  const props = withDeclaredChildren(
+    Object.values(doc.props)
     // Drop React's inherited DOM/ARIA attribute surface (a MUI wrapper reports
     // ~290 props; its real ones are a handful) so the model is the component's
     // own API — and the sandbox never fills an inherited icon/element prop.
-    .filter((prop) => !isDomNoiseProp(prop.name))
-    .map((prop) => toControl(prop, origins?.get(prop.name) ?? UNKNOWN_ORIGIN))
-    .sort((a, b) => Number(b.required) - Number(a.required) || a.name.localeCompare(b.name));
+      .filter((prop) => !isDomNoiseProp(prop.name))
+      .map((prop) => toControl(prop, origins?.get(prop.name) ?? UNKNOWN_ORIGIN)),
+    origins,
+  ).sort((a, b) => Number(b.required) - Number(a.required) || a.name.localeCompare(b.name));
 
   return { props, ownPropCount: countOwn(props, origins !== null) };
 }
