@@ -9,10 +9,16 @@ export interface CustomizationState {
   readonly tokenOverrides: Readonly<Record<string, string>>;
   /** propName -> value. */
   readonly propValues: Readonly<Record<string, unknown>>;
+  /**
+   * Universal design overrides (size/colour/spacing/…) applied to the
+   * component's root element — independent of any tokens.
+   */
+  readonly designOverrides?: Readonly<Record<string, string>>;
   readonly activeTheme?: string;
 }
 
 export const EMPTY_CUSTOMIZATION: CustomizationState = {
   tokenOverrides: {},
   propValues: {},
+  designOverrides: {},
 };

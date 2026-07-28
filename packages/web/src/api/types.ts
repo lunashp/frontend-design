@@ -1,11 +1,21 @@
 /**
  * DTO mirror of the engine's serialized contract. The web app depends on the
  * JSON API only — never on @ce/core directly — so the engine's Node-only deps
- * never reach the browser bundle. Keep in sync with @ce/core's artifact types.
+ * never reach the browser bundle. Keep in sync with @ce/core's artifact types —
+ * `packages/core/test/types/mirror-sync.test.ts` fails when this file drifts.
  */
 
 export type AtomicLevel = 'atom' | 'molecule' | 'organism' | 'page';
 export type ComponentKind = 'presentational' | 'container' | 'layout';
+/** What a component is FOR — mirrors @ce/core's `ComponentRole`. */
+export type ComponentRole =
+  | 'form-control'
+  | 'data-display'
+  | 'navigation'
+  | 'feedback'
+  | 'action'
+  | 'layout'
+  | 'other';
 export type ControlKind =
   | 'boolean'
   | 'enum'
@@ -30,12 +40,41 @@ export interface ComponentDescriptor {
   loc: SourceLocation;
 }
 
+export interface ClassificationSignals {
+  childComponentCount: number;
+  jsxDepth: number;
+  hookNames: string[];
+  usesRouter: boolean;
+  usesStore: boolean;
+  usesDataFetching: boolean;
+  contextConsumers: string[];
+  isClientComponent: boolean;
+  propCount: number;
+  /** Lowercase DOM element names the component renders (role-facet evidence). */
+  domTags?: string[];
+  /** Explicit `role="…"` attribute values, lowercased. */
+  ariaRoles?: string[];
+}
+
 export interface Classification {
   atomicLevel: AtomicLevel;
   kind: ComponentKind;
+  /**
+   * What the component is FOR. Optional in the DTO only so hand-built fixtures
+   * may omit it — a real scan always sends it; see @ce/core's `Classification`.
+   */
+  role?: ComponentRole;
   contextDependencyScore: number;
   confidence: number;
 }
+
+/**
+ * Where a prop is DECLARED. A wrapper around a library component absorbs that
+ * library's whole prop contract, so a component that adds two props reports 64:
+ * `own` is the number that describes the component, `inherited` the library's.
+ * `unknown` = the checker could not place it; never counted as own.
+ */
+export type PropOrigin = 'own' | 'inherited' | 'unknown';
 
 export interface PropControl {
   name: string;
@@ -45,16 +84,74 @@ export interface PropControl {
   defaultValue?: string;
   required: boolean;
   description?: string;
+  origin: PropOrigin;
+  /** For `inherited` props: the installed package that declares it. */
+  originPackage?: string;
 }
 
 export interface PropModel {
   props: PropControl[];
+  /**
+   * How many of `props` the component declares itself. `null` means "not
+   * determined" (the props type could not be resolved) — NOT zero; the UI must
+   * fall back to the plain total rather than claim the component owns none.
+   */
+  ownPropCount: number | null;
+}
+
+/**
+ * Reverse-import-graph reuse signal — how many OTHER analyzed files import a
+ * component. A RANK / DISPLAY / tie-break signal ONLY, never a reason to hide a
+ * component: story/test/spec files are outside the analyzed program, so a
+ * component used only by stories reads 0. "imports from analyzed source
+ * (stories/tests excluded)".
+ */
+export interface ComponentUsage {
+  usedByCount: number;
+  usedByFiles: string[];
 }
 
 export interface ComponentSummary {
   descriptor: ComponentDescriptor;
   classification: Classification;
+  signals: ClassificationSignals;
   propModel: PropModel;
+  /** Optional: a real scan always attaches it; hand-built fixtures may omit it. */
+  usage?: ComponentUsage;
+}
+
+export interface ScanFailure {
+  componentId: string;
+  name: string;
+  filePath: string;
+  message: string;
+}
+
+/**
+ * The `ClassificationSignals` fields the engine grades for collapse. Written as
+ * a `Pick` over the mirrored signals rather than a bare union so renaming a
+ * signal on this side is a compile error here instead of a note that silently
+ * stops matching the engine's.
+ */
+export type GradedSignal = keyof Pick<
+  ClassificationSignals,
+  'usesRouter' | 'usesStore' | 'usesDataFetching'
+>;
+
+/**
+ * A signal detector a whole scan proved is no longer matching: zero hits across
+ * the corpus while the target declares a dependency that exists to be detected.
+ * Scan-LEVEL, so it belongs to the scan and not to any component.
+ *
+ * `message` is authored engine-side and carried verbatim. Re-writing the
+ * sentence here would give one finding two authors, and this file cannot import
+ * the engine's copy — so it forwards the prose and formats only the headline.
+ */
+export interface HeuristicWarning {
+  signal: GradedSignal;
+  dependency: string;
+  scanned: number;
+  message: string;
 }
 
 export interface ScanResult {
@@ -62,18 +159,51 @@ export interface ScanResult {
   projectRoot: string;
   framework: string;
   components: ComponentSummary[];
+  failures: ScanFailure[];
+  /**
+   * The prose restatement of every `failures` entry — the human log — and
+   * NOTHING else. Scan-level findings used to be appended here too, last, where
+   * every consumer that caps this list dropped them first. They now have their
+   * own typed field; see `heuristicWarnings`.
+   */
   warnings: string[];
+  /**
+   * Detectors that produced zero hits across the whole scan while the project
+   * declares a library that exists to be detected. Bounded by the number of
+   * graded signals rather than by project size, so it is never truncated.
+   */
+  heuristicWarnings: HeuristicWarning[];
 }
 
 export type Renderability = 'full' | 'stubbed' | 'code-only';
+export type AssetEncoding = 'file' | 'data-url';
+
+export interface AssetRef {
+  path: string;
+  encoding: AssetEncoding;
+  sourcePath: string;
+}
+
+export interface StubbedModule {
+  specifier: string;
+  replacedWith: string;
+  /** The capability given up, e.g. "client-side prefetch and route awareness". */
+  lost: string;
+}
 
 export interface PortableBundle {
   files: Record<string, string>;
   entryPath: string;
   externalDeps: Record<string, string>;
-  assets: unknown[];
+  assets: AssetRef[];
   warnings: string[];
+  stubbedModules: StubbedModule[];
+  /** Every unresolved local import, as `<file> → <specifier>`. */
+  danglingImports: string[];
   incomplete?: boolean;
+  previewTheme?: { path: string; exportName: string };
+  previewMessages?: string;
+  previewProviders?: { path: string; exportName: string }[];
 }
 
 export interface SandpackSpec {
@@ -94,6 +224,13 @@ export type TokenCategory =
   | 'shadow'
   | 'other';
 
+export interface TokenUsage {
+  file: string;
+  line: number;
+  property: string;
+  selector: string;
+}
+
 export interface Token {
   id: string;
   name: string;
@@ -101,12 +238,31 @@ export interface Token {
   category: TokenCategory;
   value: string;
   fallback: string;
-  usages: { file: string; line: number; property: string; selector: string }[];
+  usages: TokenUsage[];
   source: 'extracted' | 'derived' | 'user';
+}
+
+/**
+ * Honest disclosure of a static theme-file mining pass. `derived` tokens come
+ * from reading a `createTheme({...})` object LITERAL (never executing it), so a
+ * value that is a variable ref / spread / call / template cannot be resolved.
+ * Those are counted and their dotted paths listed rather than guessed, so the UI
+ * can say "mined N values, M unresolved" and link the source.
+ */
+export interface ThemeMiningDisclosure {
+  file: string;
+  exportName: string;
+  resolved: number;
+  unresolved: number;
+  unresolvedPaths: string[];
 }
 
 export interface TokenModel {
   tokens: Token[];
+  /** Optional named theme presets: theme -> (tokenId -> value). */
+  themes?: Record<string, Record<string, string>>;
+  /** Present when derived tokens were mined from a TS theme file. */
+  derivedFrom?: ThemeMiningDisclosure;
 }
 
 export interface ComponentArtifact extends ComponentSummary {
@@ -116,12 +272,140 @@ export interface ComponentArtifact extends ComponentSummary {
   sandpack: SandpackSpec;
 }
 
+/**
+ * Multi-component kit DTOs (POST /api/kit) — the wire mirror of @ce/core's
+ * `PortableKit` (packages/core/src/types/portable-kit.ts).
+ *
+ * That engine module is deliberately NOT one of the modules the mirror-sync test
+ * (`packages/core/test/types/mirror-sync.test.ts`) guards, so this side is
+ * composed by hand from the already-mirrored `Record<string,string>` /
+ * `StubbedModule` / `TokenModel` plus the kit-only `KitComponent` / `DepConflict`
+ * / `DepRequirement` declared here. Extra interfaces are allowed in the mirror, so
+ * adding these keeps that test green.
+ */
+export interface KitComponent {
+  id: string;
+  name: string;
+  entryPath: string;
+}
+
+export interface DepRequirement {
+  componentId: string;
+  range: string;
+}
+
+export interface DepConflict {
+  package: string;
+  requirements: DepRequirement[];
+}
+
+export interface PortableKit {
+  files: Record<string, string>;
+  entryPaths: Record<string, string>;
+  components: KitComponent[];
+  externalDeps: Record<string, string>;
+  depConflicts: DepConflict[];
+  tokensCssPath: string;
+  tokensCss: string;
+  tokenModel: TokenModel;
+  stubbedModules: StubbedModule[];
+  danglingImports: string[];
+  warnings: string[];
+  previewTheme?: { path: string; exportName: string };
+  previewMessages?: string;
+  previewProviders?: { path: string; exportName: string }[];
+}
+
 export interface ProgressEvent {
   phase: string;
   message: string;
   ratio?: number;
 }
 
+/**
+ * Mirror of the engine's `PathAliases` (packages/core/src/types/project.ts).
+ * project.ts is not one of the artifact modules the mirror-sync test guards, so
+ * this pair is kept in sync by hand — it exists only to type the preflight DTO.
+ */
+export interface PathAliases {
+  baseUrl: string | null;
+  paths: Record<string, string[]>;
+}
+
+/** Mirror of the engine's `PreflightMember` (packages/core/src/project/preflight.ts). */
+export interface PreflightMember {
+  name: string | null;
+  dir: string;
+}
+
+/**
+ * Mirror of the engine's `ProjectPreflight` — the compact "what will I scan"
+ * profile the host returns from GET /api/preflight, computed without a full scan.
+ */
+export interface ProjectPreflight {
+  rootPath: string;
+  packageName: string | null;
+  framework: string;
+  frameworkConfidence: number;
+  frameworkReason: string;
+  srcDirs: string[];
+  pathAliases: PathAliases;
+  nodeModulesPresent: boolean;
+  isWorkspaceRoot: boolean;
+  reactMembers: PreflightMember[];
+}
+
 export interface ApiError {
   error: { message: string; code: string };
 }
+
+/**
+ * Accessibility-audit DTOs — the wire shape of GET /api/a11y. A transport concern
+ * the engine has no opinion about (the audit runs in the host's browser, not the
+ * engine), so these are mirror EXTRAS, not engine-mirrored types.
+ */
+export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
+
+export interface A11yFinding {
+  ruleId: string;
+  impact: A11yImpact;
+  help: string;
+  helpUrl: string;
+  /** Total DOM nodes the rule flagged (may exceed targets.length). */
+  nodeCount: number;
+  /** A bounded sample of the affected element selectors. */
+  targets: string[];
+}
+
+export interface A11ySummary {
+  critical: number;
+  serious: number;
+  moderate: number;
+  minor: number;
+}
+
+/** A completed audit — the available:true branch. */
+export interface A11yReport {
+  available: true;
+  renderability: Renderability;
+  /** True when app context was faked — some ARIA/role findings may be stub artifacts. */
+  stubbedContext: boolean;
+  summary: A11ySummary;
+  /** Violations found before truncation. */
+  total: number;
+  findings: A11yFinding[];
+  truncated: boolean;
+  /** The advisory / stubbed-context caveat, carried on the wire. */
+  disclosure: string;
+}
+
+/** code-only: nothing renders to audit. unavailable: browser absent / render or axe timed out. */
+export type A11yUnavailableReason = 'code-only' | 'unavailable';
+
+export interface A11yUnavailable {
+  available: false;
+  reason: A11yUnavailableReason;
+  disclosure: string;
+}
+
+export type A11yResponse = A11yReport | A11yUnavailable;

@@ -29,6 +29,16 @@ export interface FrameworkProgram {
   readonly handle: unknown;
 }
 
+/** Real theme/messages/providers bundled into a preview for a faithful render. */
+export interface PreviewContext {
+  /** The app's real theme: bundle-relative path + export name. */
+  readonly theme?: { readonly path: string; readonly exportName: string };
+  /** Bundle-relative path of a real i18n message catalogue (JSON). */
+  readonly messagesPath?: string;
+  /** Self-contained context providers to wrap the component in. */
+  readonly providers?: readonly { readonly path: string; readonly exportName: string }[];
+}
+
 /** Generated context providers that wrap the mounted component in the sandbox. */
 export interface ProviderStubResult {
   /** Full source of a `Providers` component file (or empty if none needed). */
@@ -51,6 +61,8 @@ export interface BuildEntryInput {
   readonly providers: ProviderStubResult;
   /** Path of the token stylesheet to import, e.g. `/tokens.css`. */
   readonly tokenCssPath: string;
+  /** Prop metadata, so the entry can stub required function props (JSON can't). */
+  readonly propModel: PropModel;
 }
 
 export interface FrameworkAdapter {
@@ -77,5 +89,9 @@ export interface FrameworkAdapter {
   generateProviderStubs(
     descriptor: ComponentDescriptor,
     program: FrameworkProgram,
+    /** The bundle's external deps, so stubs match what the sandbox installs. */
+    deps: Readonly<Record<string, string>>,
+    /** Real theme/messages bundled in for a faithful preview, if available. */
+    preview?: PreviewContext,
   ): ProviderStubResult;
 }

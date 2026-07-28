@@ -8,13 +8,20 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome lint --error-on-warnings .",
+    "test:browser:thumbnail": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/thumbnail-render.spec.ts",
+    "test:browser:a11y": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/a11y-audit.spec.ts",
+    "census": "tsc -p tsconfig.e2e.json --noEmit && tsx e2e/render-census.ts"
   },
   "dependencies": {
     "@ce/core": "workspace:*",
+    "axe-core": "^4.12.1",
+    "esbuild": "0.28.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.13"
+    "@types/ws": "^8.5.13",
+    "playwright": "^1.61.1"
   }
 }

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "md-log": {
+      "command": "pnpm",
+      "args": ["dlx", "md-log-mcp@1.1.1"],
+      "env": {
+        "MDLOG_API_BASE_URL": "${MDLOG_API_BASE_URL:-https://app.md-log.com/api/v1}",
+        "MDLOG_PAT": "${MDLOG_PAT}"
+      }
+    },
+    "ce-mcp": {
+      "command": "pnpm",
+      "args": ["-s", "exec", "tsx", "packages/mcp/src/main.ts"],
+      "env": {
+        "CE_WORKSPACE": "${CE_WORKSPACE:-.workspace}",
+        "CE_DEFAULT_PROJECT": "${CE_DEFAULT_PROJECT:-}"
+      }
+    }
+  }
+}

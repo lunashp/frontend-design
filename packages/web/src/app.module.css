@@ -9,6 +9,16 @@
   overflow: hidden;
 }
 
+/* With nothing selected the detail column has nothing to show, and holding 380px
+   for a placeholder cost the catalogue a third of its width — two cards per row
+   instead of three. Give the space back until a component is actually picked. */
+.shell[data-inspector='hidden'] {
+  grid-template-columns: 288px 1fr;
+  grid-template-areas:
+    'header header'
+    'sidebar main';
+}
+
 .header {
   grid-area: header;
   display: flex;
@@ -16,15 +26,35 @@
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in oklch, var(--surface) 60%, transparent);
-  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .header {
+    background: var(--surface);
+  }
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The header's right-hand group: project chip + export/compare/kit. It wraps —
+   four controls plus a path do not fit beside the brand on a narrow screen, and
+   a nowrap row simply pushes them past the edge. */
+.headerActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  min-width: 0;
 }
 .mark {
   display: grid;
@@ -34,8 +64,12 @@
   border-radius: 9px;
   font-size: var(--text-lg);
   color: var(--accent-ink);
-  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
-  box-shadow: var(--glow-accent);
+  /* A polished moonstone: periwinkle catching light on the top-left corner,
+     deepening in the shade. Same light direction as the page and the cards. */
+  background: linear-gradient(140deg, var(--rank-atom), var(--accent));
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    var(--shadow-sm);
 }
 .brandText {
   display: flex;
@@ -44,8 +78,8 @@
 }
 .brandName {
   font-family: var(--font-display);
-  font-weight: 660;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .brandTag {
   font-family: var(--font-mono);
@@ -62,6 +96,7 @@
   border-radius: var(--radius-pill);
   background: var(--surface);
   font-size: var(--text-sm);
+  min-width: 0;
 }
 .frameworkDot {
   width: 7px;
@@ -81,6 +116,12 @@
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* The scanned folder name is arbitrary length; let it clamp rather than push
+     the chip past the edge of a narrow header. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .sidebar {
@@ -89,9 +130,19 @@
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--space-5);
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--glass-border);
   overflow-y: auto;
-  background: color-mix(in oklch, var(--surface) 30%, transparent);
+  /* Frosted glass over the aurora — the controls float on a pane, the
+     catalogue reads through the frost beside them. */
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar {
+    background: var(--surface);
+  }
 }
 
 .main {
@@ -106,11 +157,6 @@
   gap: var(--space-6);
   max-width: 1100px;
   margin: 0 auto;
-}
-
-.warnings {
-  font-size: var(--text-sm);
-  color: var(--warn);
 }
 
 .hero {
@@ -140,8 +186,60 @@
   overflow: hidden;
 }
 
+/* Below the breakpoint the inspector leaves the grid entirely and returns as a
+   modal slide-over (see COMPACT_QUERY in app.tsx, which mirrors this width).
+   Both layers are position:fixed, so they are unaffected by the grid areas. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in oklch, var(--bg) 62%, transparent);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  animation: scrim-in var(--dur) var(--ease) both;
+}
+
+.slideOver {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: min(440px, 100vw);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: slide-over-in var(--dur) var(--ease) both;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-over-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .slideOver {
+    animation: none;
+  }
+}
+
+/* SPECIFICITY, not the media query, decides these. A media query adds none, so a
+   bare `.shell` (0,1,0) in here LOSES to `.shell[data-inspector='hidden']`
+   (0,2,0) above and the layout silently never collapses — at 320px the sidebar
+   kept its full 288px and main was left 64px wide. Matching the attribute makes
+   these (0,2,0) too, and being later in the file they win. Any future rule that
+   qualifies `.shell` further must be repeated here. */
 @media (max-width: 1180px) {
-  .shell {
+  .shell,
+  .shell[data-inspector] {
     grid-template-columns: 260px 1fr;
     grid-template-areas:
       'header header'
@@ -153,12 +251,23 @@
 }
 
 @media (max-width: 720px) {
-  .shell {
+  .shell,
+  .shell[data-inspector] {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
     grid-template-areas:
       'header'
       'sidebar'
       'main';
+  }
+  /* The header is two groups side by side at desktop; at this width they stack
+     rather than shoving the actions off the right edge. */
+  .header {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+  }
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

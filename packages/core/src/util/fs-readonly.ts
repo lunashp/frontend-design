@@ -11,6 +11,7 @@
 
 import { promises as fs } from 'node:fs';
 import { readFileSync, existsSync } from 'node:fs';
+import type { Buffer } from 'node:buffer';
 import * as path from 'node:path';
 import { isInside } from './paths.js';
 import { ReadOnlyViolationError } from './errors.js';
@@ -25,6 +26,9 @@ export interface ReadOnlyFs {
   readonly root: string;
   readFile(absPath: string): Promise<string>;
   readFileSync(absPath: string): string;
+  /** Raw bytes, for binary assets (images/fonts) that are inlined as data URIs.
+   *  Still read-only and still root-asserted — only the encoding differs. */
+  readBytesSync(absPath: string): Buffer;
   readdir(absPath: string): Promise<readonly string[]>;
   stat(absPath: string): Promise<FileStat>;
   exists(absPath: string): boolean;
@@ -49,6 +53,10 @@ export function createReadOnlyFs(root: string): ReadOnlyFs {
     readFileSync(absPath) {
       assertInsideRoot(resolvedRoot, absPath);
       return readFileSync(absPath, 'utf8');
+    },
+    readBytesSync(absPath) {
+      assertInsideRoot(resolvedRoot, absPath);
+      return readFileSync(absPath);
     },
     async readdir(absPath) {
       assertInsideRoot(resolvedRoot, absPath);

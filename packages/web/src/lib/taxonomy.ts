@@ -3,7 +3,7 @@
  * classification and drives the palette; kind is secondary signposting.
  */
 
-import type { AtomicLevel, ComponentKind, ControlKind } from '../api/types.js';
+import type { AtomicLevel, ComponentKind, ComponentRole, ControlKind } from '../api/types.js';
 
 export interface RankMeta {
   label: string;
@@ -33,6 +33,46 @@ export const KIND_LABEL: Record<ComponentKind, string> = {
   container: 'Container',
   layout: 'Layout',
 };
+
+/**
+ * What a component is FOR. A full `Record` so a new role fails typecheck here
+ * until it is given a label, rather than rendering a raw enum value. `other` is
+ * the "no confident role" catch-all and IS labelled for completeness, but
+ * `roleLabel` below hides it: an "Other" tag on a card is noise, not a fact.
+ */
+export const ROLE_LABEL: Record<ComponentRole, string> = {
+  'form-control': 'Form control',
+  'data-display': 'Data display',
+  navigation: 'Navigation',
+  feedback: 'Feedback',
+  action: 'Action',
+  layout: 'Layout',
+  other: 'Other',
+};
+
+/**
+ * The roles worth showing/filtering, in reading order — everything except
+ * `other`. `action` leads because it is the most common interactive role; the
+ * grouping otherwise runs interactive → structural.
+ */
+export const ROLE_ORDER: readonly ComponentRole[] = [
+  'action',
+  'form-control',
+  'data-display',
+  'navigation',
+  'feedback',
+  'layout',
+];
+
+/**
+ * The label to DISPLAY for a role, or null when there is nothing worth showing:
+ * a missing role (older payload / hand-built summary) or the `other` catch-all.
+ * Callers render the tag only when this is non-null.
+ */
+export function roleLabel(role: ComponentRole | undefined): string | null {
+  if (role === undefined || role === 'other') return null;
+  return ROLE_LABEL[role];
+}
 
 export const CONTROL_GLYPH: Record<ControlKind, string> = {
   boolean: '◧',

@@ -1,6 +1,14 @@
 /** Thin client for the @ce/host HTTP + WS API. */
 
-import type { ApiError, ComponentArtifact, ProgressEvent, ScanResult } from './types.js';
+import type {
+  A11yResponse,
+  ApiError,
+  ComponentArtifact,
+  PortableKit,
+  ProgressEvent,
+  ProjectPreflight,
+  ScanResult,
+} from './types.js';
 
 export interface Health {
   ok: boolean;
@@ -20,11 +28,26 @@ export async function getHealth(): Promise<Health> {
   return parseOrThrow<Health>(await fetch('/api/health'));
 }
 
-export async function scanProject(path?: string): Promise<ScanResult> {
+/**
+ * The pre-scan profile for a project (framework, srcDirs, aliases, node_modules,
+ * workspace members). Cheap on the host — no full scan — so the web can fetch it
+ * around the auto-scan and show the user what they are committing to.
+ */
+export async function getPreflight(path?: string): Promise<ProjectPreflight> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : '';
+  return parseOrThrow<ProjectPreflight>(await fetch(`/api/preflight${query}`));
+}
+
+export interface ScanOptions {
+  /** Re-run the engine even if the host has a cached result for this project. */
+  force?: boolean;
+}
+
+export async function scanProject(path?: string, options: ScanOptions = {}): Promise<ScanResult> {
   const res = await fetch('/api/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(path ? { path } : {}),
+    body: JSON.stringify({ ...(path ? { path } : {}), ...(options.force ? { force: true } : {}) }),
   });
   return parseOrThrow<ScanResult>(res);
 }
@@ -36,6 +59,31 @@ export async function getArtifact(path: string, id: string): Promise<ComponentAr
     body: JSON.stringify({ path, id }),
   });
   return parseOrThrow<ComponentArtifact>(res);
+}
+
+/**
+ * Build a portable kit for a SET of components — the multi-component harvest.
+ * POST so the id set travels in the body, mirroring /api/artifact's shape. The
+ * host merges the set into one folder with a single shared token namespace.
+ */
+export async function getKit(path: string, ids: readonly string[]): Promise<PortableKit> {
+  const res = await fetch('/api/kit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, ids }),
+  });
+  return parseOrThrow<PortableKit>(res);
+}
+
+/**
+ * Fetch the advisory accessibility audit for one component. Returns 200 for BOTH
+ * a completed audit and a definitive "unavailable" (available:false) — only a
+ * missing path/id (400) or an unknown component (404) throws. GET so it is cheap
+ * to fetch lazily when a component is opened in the inspector.
+ */
+export async function getA11y(path: string, id: string): Promise<A11yResponse> {
+  const params = new URLSearchParams({ path, id });
+  return parseOrThrow<A11yResponse>(await fetch(`/api/a11y?${params.toString()}`));
 }
 
 /** Subscribe to scan progress over WS. Returns an unsubscribe fn. */

@@ -1,7 +1,10 @@
 /**
  * Discovers React UI components in the ts-morph program. A component is an
- * exported PascalCase function/arrow/class whose body contains JSX. Re-exports
- * resolve to their original declaration, so barrel files don't create duplicates.
+ * exported PascalCase function/arrow/class whose body contains JSX, or a
+ * styled-components/emotion styled factory (which has no JSX at all).
+ * Anonymous default exports are named after their file. Re-exports resolve to
+ * their original declaration, so barrel files don't create duplicates, and one
+ * declaration reachable under several export names is catalogued once.
  */
 
 import { Node } from 'ts-morph';
@@ -9,9 +12,20 @@ import type { ExportedDeclarations, SourceFile } from 'ts-morph';
 import type { ComponentDescriptor } from '../../types/component.js';
 import { shortHash } from '../../util/paths.js';
 import type { ReactProgramHandle } from './ts-program.js';
-import { componentBodyOf, containsJsx, isPascalCase } from './node-utils.js';
+import {
+  componentBodyOf,
+  containsJsx,
+  isPascalCase,
+  isStyledFactory,
+  nameFromFilePath,
+} from './node-utils.js';
 
-function declaredName(decl: ExportedDeclarations, exportName: string): string {
+/**
+ * The component's display name. Anonymous default exports (`export default
+ * () => <span/>`) have no identifier at all — `'default'` is not PascalCase, so
+ * they used to be dropped from discovery entirely; name them after their file.
+ */
+function declaredName(decl: ExportedDeclarations, exportName: string): string | null {
   if (
     (Node.isFunctionDeclaration(decl) || Node.isClassDeclaration(decl)) &&
     decl.getName()
@@ -19,6 +33,7 @@ function declaredName(decl: ExportedDeclarations, exportName: string): string {
     return decl.getName() as string;
   }
   if (Node.isVariableDeclaration(decl)) return decl.getName();
+  if (exportName === 'default') return nameFromFilePath(decl.getSourceFile().getFilePath());
   return exportName;
 }
 
@@ -35,7 +50,17 @@ export function componentId(filePath: string, exportName: string): string {
   return `${shortHash(`${filePath}#${exportName}`, 10)}`;
 }
 
+/**
+ * Keep the named export when one declaration is exported under several names
+ * (`export const X` + `export default X`): a named export ports as an explicit
+ * `import { X }`, which survives re-export and renaming better than `default`.
+ */
+function preferred(existing: ComponentDescriptor, exportName: string): boolean {
+  return existing.exportName !== 'default' || exportName === 'default';
+}
+
 export function discoverComponents(handle: ReactProgramHandle): ComponentDescriptor[] {
+  /** Keyed by declaration identity (file + position), not by export name. */
   const seen = new Map<string, ComponentDescriptor>();
 
   for (const sf of handle.tsProject.getSourceFiles()) {
@@ -51,22 +76,24 @@ export function discoverComponents(handle: ReactProgramHandle): ComponentDescrip
     for (const [exportName, decls] of exported) {
       for (const decl of decls) {
         const name = declaredName(decl, exportName);
-        if (!isPascalCase(name)) continue;
+        if (!name || !isPascalCase(name)) continue;
 
         const body = componentBodyOf(decl);
-        if (!body || !containsJsx(body)) continue;
+        // A styled factory renders DOM but contains no JSX of its own.
+        if (!body || !(containsJsx(body) || isStyledFactory(body))) continue;
 
         const originFile = decl.getSourceFile();
         if (isExcludedFile(originFile)) continue;
 
         const filePath = originFile.getFilePath();
-        const id = componentId(filePath, exportName);
-        if (seen.has(id)) continue;
-
         const start = decl.getStart();
+        const key = `${filePath}#${start}`;
+        const existing = seen.get(key);
+        if (existing && preferred(existing, exportName)) continue;
+
         const { line, column } = originFile.getLineAndColumnAtPos(start);
-        seen.set(id, {
-          id,
+        seen.set(key, {
+          id: componentId(filePath, exportName),
           name,
           filePath,
           exportName,

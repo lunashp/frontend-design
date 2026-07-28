@@ -57,14 +57,86 @@
   font-size: var(--text-xs);
   color: var(--text-dim);
 }
+.stubCount {
+  justify-self: end;
+  padding: 1px 8px;
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
+}
+
+/* Backing control (#6) */
+.stageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.backing {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.backingBtn {
+  padding: 3px 10px;
+  border-radius: calc(var(--radius-input) - 2px);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  transition:
+    color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+.backingBtn:hover {
+  color: var(--text);
+}
+.backingBtn[data-active='true'] {
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 1px 2px color-mix(in oklch, black 12%, transparent);
+}
+
+/* Colour-source caption (#1) — honest note on where the preview's colours come from */
+.colourSource {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.colourSource[data-real='true'] {
+  color: var(--text-dim);
+}
+.colourSource[data-real='false']::before {
+  content: '⚠ ';
+  color: var(--warn);
+}
 
 .codeOnly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-4);
   font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--text-dim);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
+}
+/* A server component is a calm fact, not a failure — a quiet accent surface, not
+   the neutral "couldn't do it" grey. */
+.codeOnly[data-kind='server-component'] {
+  background: var(--aside-bg-accent);
+  border-color: var(--aside-line-accent);
+}
+.codeOnlyHead {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--text-base);
 }
 
 .notes {

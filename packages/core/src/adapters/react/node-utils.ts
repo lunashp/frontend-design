@@ -24,7 +24,18 @@ export function containsJsx(node: Node): boolean {
   );
 }
 
-/** The node holding the component body (function/arrow/class/HOC call), if any. */
+/**
+ * A `styled.div\`…\`` / `styled(Button)\`…\`` / `styled.a.attrs({})\`…\`` tag.
+ * Covers styled-components and emotion, which share the call shape. These carry
+ * no JSX at all, so discovery has to recognise them structurally or a
+ * styled-components codebase scans to an empty gallery.
+ */
+export function isStyledFactory(node: Node): boolean {
+  if (!Node.isTaggedTemplateExpression(node)) return false;
+  return /^styled\s*[.(]/.test(node.getTag().getText());
+}
+
+/** The node holding the component body (function/arrow/class/HOC call/styled tag), if any. */
 export function componentBodyOf(decl: ExportedDeclarations): Node | null {
   if (
     Node.isFunctionDeclaration(decl) ||
@@ -33,14 +44,38 @@ export function componentBodyOf(decl: ExportedDeclarations): Node | null {
   ) {
     return decl;
   }
+  // `export default styled.div\`…\`` — ts-morph hands back the tagged template
+  // ITSELF as the exported declaration, so the styled branch below (which only
+  // inspects a variable's initializer) never sees it and the file fell through
+  // to `null`, dropping every default-exported styled component from discovery.
+  if (isStyledFactory(decl)) return decl;
   if (Node.isVariableDeclaration(decl)) {
     const init = decl.getInitializer();
     if (init && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) return init;
     if (init && Node.isCallExpression(init)) return init; // React.memo / forwardRef(...)
+    if (init && isStyledFactory(init)) return init;
     return null;
   }
   if (Node.isClassDeclaration(decl)) return decl;
   return null;
+}
+
+/**
+ * A component name derived from the file path, for exports that carry no usable
+ * identifier of their own (`export default () => <span/>`). `Hero.tsx` → `Hero`,
+ * `hero-banner.tsx` → `HeroBanner`, and a bare `index.tsx` falls back to its
+ * directory so every component in a folder-per-component tree isn't "Index".
+ */
+export function nameFromFilePath(filePath: string): string | null {
+  const segments = filePath.split('/').filter(Boolean);
+  const base = (segments.pop() ?? '').replace(/\.[^.]+$/, '');
+  const raw = /^index$/i.test(base) ? (segments.pop() ?? '') : base;
+  const pascal = raw
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+  return isPascalCase(pascal) ? pascal : null;
 }
 
 /** Re-resolve a descriptor's declaration node in the program. */

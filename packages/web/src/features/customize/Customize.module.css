@@ -8,12 +8,12 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   overflow: hidden;
-  background-color: oklch(96% 0.004 264);
+  background-color: var(--preview-surface);
   background-image:
-    linear-gradient(45deg, oklch(90% 0.006 264) 25%, transparent 25%),
-    linear-gradient(-45deg, oklch(90% 0.006 264) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, oklch(90% 0.006 264) 75%),
-    linear-gradient(-45deg, transparent 75%, oklch(90% 0.006 264) 75%);
+    linear-gradient(45deg, var(--preview-check) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--preview-check) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--preview-check) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--preview-check) 75%);
   background-size: 18px 18px;
   background-position: 0 0, 0 9px, 9px -9px, -9px 0;
 }
@@ -40,6 +40,24 @@
   border-style: dashed;
 }
 
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.sectionNote {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -58,11 +76,65 @@
   margin-bottom: var(--space-1);
 }
 
+.token {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .row {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* Where the token actually came from — the difference between dragging a
+   slider blindfolded and knowing you are editing .primary's background. */
+.usages {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  list-style: none;
+}
+.usage {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.usageProp {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+.usageSelector {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+.usageFile {
+  margin-left: auto;
+  flex-shrink: 0;
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.usageMore {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  opacity: 0.75;
 }
 
 .swatch {
@@ -80,6 +152,121 @@
 .swatch::-webkit-color-swatch {
   border: none;
   border-radius: 4px;
+}
+
+/* Swatch · name · [alpha + value]. The alpha slider lives beside the text field
+   because `<input type="color">` cannot show alpha at all, so without a visible
+   readout a translucent colour reads as fully opaque. */
+.colorEnd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-self: end;
+  min-width: 0;
+}
+.colorEnd .hex {
+  width: 92px;
+  flex: none;
+}
+.alpha {
+  width: 52px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.alphaVal {
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Which interactive state the fields below are editing. */
+.states {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  background: var(--bg);
+}
+.stateTab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: calc(var(--radius-chip) - 2px);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  transition:
+    color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease);
+}
+.stateTab:hover {
+  color: var(--text);
+}
+.stateTabOn {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.stateDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.stateNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.stateNote code {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+/* A state that cannot deliver on the common component shape. Distinct from
+   .stateNote — this is a limitation, not a description, and reading it as
+   ordinary help text is how the user ends up dragging an inert control. */
+.stateWarn {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  /* The whole box carries the accent, not a bar on its left edge. */
+  border: 1px solid var(--aside-line-accent);
+  border-radius: var(--radius-input);
+  background: var(--aside-bg-accent);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* Preview couldn't apply an edit. A recessed amber plane (the aside pattern),
+   not a red alarm: the preview still renders, this one edit just didn't take. */
+.previewWarn {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--aside-line-warn);
+  border-radius: var(--radius-input);
+  background: var(--aside-bg-warn);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.previewWarn strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: var(--space-1);
+}
+.previewWarn ul {
+  margin: 0;
+  padding-left: var(--space-4);
 }
 
 .tokenName {
@@ -124,6 +311,22 @@
   justify-self: end;
 }
 
+.range {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.rangeVal {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  min-width: 46px;
+  text-align: right;
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+}
+
 .actions {
   display: flex;
   align-items: center;
@@ -149,6 +352,16 @@
   cursor: not-allowed;
 }
 
+/* Why the token panel is empty (a component with no re-themeable CSS custom
+   properties). Without it the missing panel reads as a broken UI rather than a
+   fact about the component. */
+.emptyTokens {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
 .hint {
   font-size: var(--text-xs);
   line-height: 1.6;
@@ -158,5 +371,207 @@
 }
 .hint code {
   font-size: 0.95em;
+  color: var(--text-dim);
+}
+
+/* ── Named presets (the reload-survival fix) ─────────────────────────────── */
+
+.presetSave {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.presetInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  outline: none;
+  transition: border-color var(--dur) var(--ease);
+}
+.presetInput:focus {
+  border-color: var(--accent);
+}
+.presetSaveBtn {
+  flex: none;
+  padding: 6px 14px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-chip);
+  transition:
+    opacity var(--dur) var(--ease),
+    filter var(--dur) var(--ease);
+}
+.presetSaveBtn:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+.presetSaveBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.presetList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Each preset is a pill: a big Apply target, a hairline, then icon actions. */
+.presetChip {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  background: var(--bg);
+  overflow: hidden;
+  transition: border-color var(--dur) var(--ease);
+}
+.presetChip:hover {
+  border-color: var(--line-strong);
+}
+.presetApply {
+  padding: 5px 12px;
+  font-size: var(--text-xs);
+  color: var(--text);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease);
+}
+.presetApply:hover {
+  color: var(--accent);
+}
+.presetIcon {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  border-left: 1px solid var(--line);
+  transition:
+    color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease);
+}
+.presetIcon:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.presetRenameInput {
+  width: 16ch;
+  padding: 5px 10px;
+  font-size: var(--text-xs);
+  color: var(--text);
+  background: var(--bg);
+  border: none;
+  outline: none;
+}
+/* The whole box carries the accent, not a bar on its left edge. */
+.presetWarn {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--aside-line-accent);
+  border-radius: var(--radius-input);
+  background: var(--aside-bg-accent);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.presetEmpty {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+/* ── Engine theme presets ────────────────────────────────────────────────── */
+
+.themeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.themeChip {
+  padding: 5px 14px;
+  font-size: var(--text-xs);
+  text-transform: capitalize;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  transition:
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+.themeChip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* ── Foundations (derived reference, deliberately not interactive) ────────── */
+
+.foundationDisclosure {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.foundationDisclosure code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+/* Recessed vs the editable rows: read-only reference, not a control. */
+.foundationRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 0;
+}
+.foundationName {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.foundationSwatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+}
+.foundationValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.foundationUnresolved {
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+.foundationUnresolved summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.foundationUnresolved ul {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-4);
+}
+.foundationUnresolved code {
+  font-family: var(--font-mono);
   color: var(--text-dim);
 }

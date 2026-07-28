@@ -1,0 +1,129 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  /* Stable cell height in one place — the whole grid keys off it, and the frame
+     forces the preview stage to fill it so a tall or short component never
+     resizes its cell. */
+  --cell-h: 180px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.summary {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.varying {
+  color: var(--text-faint);
+}
+
+/* Empty state — a fact about the component, phrased as one, not an error. */
+.none {
+  padding: var(--space-6) var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-card);
+}
+
+/* Auto-fill grid: cells find their own column count with the panel width, so the
+   matrix reads as a contact sheet rather than a fixed table. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+/* The sizing box: the preview stage (LocalPreview's own child) is stretched to a
+   definite height here so every cell is identical regardless of what it renders. */
+.frame {
+  height: var(--cell-h);
+  border-radius: var(--radius-card);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.frame > * {
+  height: 100%;
+}
+.cell:hover .frame {
+  transform: translateY(-2px);
+}
+
+.caption {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+
+.note {
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--text-faint);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--aside-bg);
+}
+
+/* Code-only fallback: the combinations as a table, no iframes. */
+.codeOnly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.codeOnlyNote {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table thead th {
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--bg);
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+.table td code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.rowNumHead,
+.rowNum {
+  width: 1%;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}

@@ -19,12 +19,12 @@ body {
   line-height: 1.5;
   color: var(--text);
   background-color: var(--bg);
-  /* Faint technical grid — the workbench surface */
-  background-image:
-    linear-gradient(var(--bg-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
-  background-size: 44px 44px;
-  background-position: -1px -1px;
+  /* The aurora the frosted glass refracts: lilac, aquamarine, and a warm
+     blush at very low intensity. Fixed, so it stays put behind the scrolling
+     regions and every glass panel has something to catch. Without a backdrop
+     here the frost has nothing to refract and the glass reads as flat fill. */
+  background-image: var(--aurora);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -35,9 +35,16 @@ h3,
 h4 {
   font-family: var(--font-display);
   margin: 0;
-  font-weight: 640;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
+  /* Fraunces is an old-style with real modulation; it does not want the
+     tight negative tracking a grotesque needs. Let it set naturally.
+     SOFT blunts the terminals and WONK turns on the wonky alternates: left
+     at defaults, Fraunces' opsz axis ramps the thick/thin contrast at display
+     sizes and it starts reading as a fashion Didone. Softened, it reads like
+     something set in a book, which is the room we are in. */
+  font-weight: 600;
+  font-variation-settings: 'SOFT' 60, 'WONK' 1;
+  letter-spacing: -0.005em;
+  line-height: 1.08;
 }
 
 p {
@@ -74,7 +81,7 @@ code,
 }
 
 ::selection {
-  background: oklch(80% 0.13 205 / 0.3);
+  background: color-mix(in oklch, var(--accent) 26%, transparent);
 }
 
 /* Scrollbar — quiet, on-theme */

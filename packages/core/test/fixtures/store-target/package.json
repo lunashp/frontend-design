@@ -1,0 +1,10 @@
+{
+  "name": "store-target",
+  "private": true,
+  "version": "0.0.0",
+  "comment": "Deps only: scan-level heuristic grading reads package.json, never source. Paired with a synthetic adapter in test/pipeline/scan.test.ts that reports a corpus larger than any on-disk fixture.",
+  "dependencies": {
+    "react": "^18.3.1",
+    "zustand": "^4.5.0"
+  }
+}

@@ -23,6 +23,11 @@
 }
 .search input {
   flex: 1;
+  /* A flex item's automatic minimum is its intrinsic min width, and an <input>'s
+     is its `size` attribute default (~20ch) — wider than a 260px sidebar's
+     field. Without opting out, the input refuses to shrink and shoves the `/`
+     keycap out through the right edge of the field. */
+  min-width: 0;
   padding: var(--space-3) 0;
   background: none;
   border: none;
@@ -30,6 +35,25 @@
 }
 .search input::placeholder {
   color: var(--text-faint);
+}
+
+/* The `/` shortcut, stated on the control it focuses. It fades out once the
+   field has focus: at that point the key is a literal slash, and advertising it
+   as a shortcut would be a lie. */
+.searchKey {
+  flex: none;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--text-faint);
+  background: color-mix(in oklch, var(--text) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  transition: opacity var(--dur) var(--ease);
+}
+.search:focus-within .searchKey {
+  opacity: 0;
 }
 
 .group {
@@ -52,7 +76,8 @@
 }
 
 .rank,
-.kind {
+.kind,
+.dir {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -68,9 +93,36 @@
     background var(--dur) var(--ease);
 }
 .rank:hover,
-.kind:hover {
+.kind:hover,
+.dir:hover {
   border-color: var(--line-strong);
   color: var(--text);
+}
+
+/* The count sits in a subdued pill so the folder name stays the readable part. */
+.dirCount {
+  font-size: var(--text-xs);
+  color: var(--text-faint, var(--text-dim));
+  background: color-mix(in oklch, var(--text) 6%, transparent);
+  border-radius: var(--radius-chip);
+  padding: 0 6px;
+  line-height: 1.5;
+}
+
+/* A design-system folder is the one you most likely want — mark it so it reads
+   as the recommended place to look, without hiding the others. */
+.dir[data-area='design-system'] {
+  border-color: color-mix(in oklch, var(--accent) 24%, var(--line));
+}
+
+.dir[data-active='true'] {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 32%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.dir[data-active='true'] .dirCount {
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
 }
 
 .rankDot {
@@ -81,15 +133,18 @@
 }
 
 .rank[data-active='true'] {
-  color: var(--rank);
-  border-color: color-mix(in oklch, var(--rank) 45%, transparent);
-  background: color-mix(in oklch, var(--rank) 14%, transparent);
+  /* Label in ink, not the gem colour: on the light ground the dusty gems are
+     only AA-large as text. The rank identity is carried by the dot and border,
+     never by the label's colour alone. */
+  color: var(--text);
+  border-color: color-mix(in oklch, var(--rank) 38%, transparent);
+  background: color-mix(in oklch, var(--rank) 15%, transparent);
 }
 
 .kind[data-active='true'] {
   color: var(--accent);
-  border-color: color-mix(in oklch, var(--accent) 45%, transparent);
-  background: var(--accent-ink);
+  border-color: color-mix(in oklch, var(--accent) 32%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
 }
 
 .switch {

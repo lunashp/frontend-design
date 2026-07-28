@@ -1,0 +1,6 @@
+/* A plain stylesheet in the same bundle that reuses the brand colour, so the
+   styled-derived token and this one must share a single name. */
+.wrapper {
+  background: #7367f0;
+  gap: 12px;
+}

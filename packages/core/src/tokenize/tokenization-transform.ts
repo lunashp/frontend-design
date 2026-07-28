@@ -1,8 +1,13 @@
 /**
- * Extracts color/size values from the bundle's CSS, replaces each with a
+ * Extracts color/size/shadow values from the bundle's CSS, replaces each with a
  * `var(--token, <literal-fallback>)` reference, and emits a `tokens.css` with the
  * `:root` defaults. The rewritten CSS keeps its literal fallback, so the ported
  * code renders even without the token file — and is re-themeable when it's present.
+ *
+ * Author-defined custom properties in a top-level `:root` block are the most
+ * design-system-like construct a stylesheet has, so they are adopted as tokens
+ * under THEIR OWN name and hoisted into `tokens.css` (see ./custom-properties.ts
+ * for why hoisting, not rewriting, is the only correct move).
  *
  * CSS Modules / plain CSS are tokenized here; CSS-in-JS / inline styles are
  * carried as-is (customized via props instead).
@@ -13,8 +18,15 @@ import type { Rule } from 'postcss';
 import type { FileMap } from '../types/portable-bundle.js';
 import type { Token, TokenCategory, TokenModel, TokenUsage } from '../types/token-model.js';
 import { shortHash } from '../util/paths.js';
-import { categoryFor, LENGTH_CATEGORIES } from './categorize.js';
-import { isColor, isSingleLength, normalizeColor } from './color.js';
+import { categoryFor, categoryForCustomProperty, normalizeStandardValue } from './categorize.js';
+import { normalizeColor } from './color.js';
+import {
+  applyBareVarFallbacks,
+  displayNameForCustomProperty,
+  isTopLevelRootDecl,
+} from './custom-properties.js';
+import { tokenizeStyledTemplates } from './styled-css.js';
+import { collapseWhitespace, containsVar } from './value-shape.js';
 
 export const TOKENS_CSS_PATH = '/tokens.css';
 
@@ -68,6 +80,11 @@ export function tokenizeBundle(files: FileMap): TokenizeResult {
   };
   const outFiles: Record<string, string> = { ...files };
 
+  // Parse every stylesheet up front: a generated name (`--color-1`) must not
+  // collide with an author-defined property of the same name, or `tokens.css`
+  // would carry two conflicting declarations and the last one would silently win.
+  const roots = new Map<string, postcss.Root>();
+  const takenNames = new Set<string>();
   for (const [path, content] of Object.entries(files)) {
     if (!isCssFile(path)) continue;
     let root: postcss.Root;
@@ -76,45 +93,123 @@ export function tokenizeBundle(files: FileMap): TokenizeResult {
     } catch {
       continue; // unparseable (e.g. exotic scss) — leave as-is
     }
-
+    roots.set(path, root);
     root.walkDecls((decl) => {
-      const category = categoryFor(decl.prop);
+      if (decl.prop.startsWith('--')) takenNames.add(decl.prop);
+    });
+  }
+
+  function generateName(category: TokenCategory): { name: string; ordinal: number } {
+    let name: string;
+    do {
+      counters[category] += 1;
+      name = `--${category}-${counters[category]}`;
+    } while (takenNames.has(name));
+    takenNames.add(name);
+    return { name, ordinal: counters[category] };
+  }
+
+  // Reuse-or-create a standard token and record a usage. Shared by the CSS pass
+  // and the styled/emotion pass so a value used on either surface collapses to
+  // ONE token under one name — the whole point of a single bundle namespace.
+  function mintStandard(
+    category: TokenCategory,
+    normalized: string,
+    rawValue: string,
+    usage: TokenUsage,
+  ): string {
+    const key = `${category}:${normalized}`;
+    let token = tokens.get(key);
+    if (!token) {
+      const { name, ordinal } = generateName(category);
+      token = {
+        id: shortHash(key),
+        name,
+        displayName: `${CATEGORY_LABEL[category]} ${ordinal}`,
+        category,
+        value: normalized,
+        fallback: rawValue,
+        usages: [],
+      };
+      tokens.set(key, token);
+    }
+    token.usages.push(usage);
+    return token.name;
+  }
+
+  /** Custom properties adopted as tokens: name -> literal, for var() fallbacks. */
+  const hoisted = new Map<string, string>();
+
+  for (const [path, root] of roots) {
+    const emptiedRules = new Set<Rule>();
+    root.walkDecls((decl) => {
       const rawValue = decl.value.trim();
+      // An aliasing value (`var(--other)`) is a reference, not a literal:
+      // tokenizing it would duplicate the alias or build a var() cycle.
+      if (containsVar(rawValue)) return;
+      const usage: TokenUsage = {
+        file: path,
+        line: decl.source?.start?.line ?? 0,
+        property: decl.prop,
+        selector: selectorOf(decl),
+      };
 
-      let normalized: string | null = null;
-      if (category === 'color' && isColor(rawValue)) {
-        normalized = normalizeColor(rawValue);
-      } else if (LENGTH_CATEGORIES.has(category) && isSingleLength(rawValue)) {
-        normalized = rawValue;
-      }
-      if (!normalized) return;
+      if (decl.prop.startsWith('--')) {
+        if (!isTopLevelRootDecl(decl)) return;
+        const category = categoryForCustomProperty(decl.prop, rawValue);
+        if (category === 'other') return;
+        const normalized =
+          category === 'color'
+            ? (normalizeColor(rawValue) ?? collapseWhitespace(rawValue))
+            : collapseWhitespace(rawValue);
 
-      const key = `${category}:${normalized}`;
-      let token = tokens.get(key);
-      if (!token) {
-        counters[category] += 1;
-        const name = `--${category}-${counters[category]}`;
-        token = {
+        const key = `custom:${decl.prop}`;
+        const existing = tokens.get(key);
+        // A second `:root` declaration of the same name with a DIFFERENT value is
+        // a deliberate later override; hoisting it would change what renders.
+        if (existing && existing.value !== normalized) return;
+        const token = existing ?? {
           id: shortHash(key),
-          name,
-          displayName: `${CATEGORY_LABEL[category]} ${counters[category]}`,
+          name: decl.prop,
+          displayName: displayNameForCustomProperty(decl.prop),
           category,
           value: normalized,
           fallback: rawValue,
           usages: [],
         };
-        tokens.set(key, token);
+        if (!existing) tokens.set(key, token);
+        token.usages.push(usage);
+        hoisted.set(decl.prop, normalized);
+
+        // The declaration MOVES to tokens.css — it is never rewritten in place,
+        // which is what keeps the token from pointing at itself.
+        const rule = decl.parent as Rule | undefined;
+        decl.remove();
+        if (rule && rule.nodes.length === 0) emptiedRules.add(rule);
+        return;
       }
-      token.usages.push({
-        file: path,
-        line: decl.source?.start?.line ?? 0,
-        property: decl.prop,
-        selector: selectorOf(decl),
-      });
-      decl.value = `var(${token.name}, ${rawValue})`;
+
+      const category = categoryFor(decl.prop);
+      const normalized = normalizeStandardValue(category, rawValue);
+      if (!normalized) return;
+      const name = mintStandard(category, normalized, rawValue, usage);
+      decl.value = `var(${name}, ${rawValue})`;
     });
 
+    for (const rule of emptiedRules) rule.remove();
     outFiles[path] = root.toString();
+  }
+
+  // Styled/emotion pass runs AFTER the CSS pass so a value already tokenized from
+  // a stylesheet reuses that token; a value seen only in a styled template mints
+  // a fresh name via the same generator. It rewrites its own bundle .tsx copies.
+  const styled = tokenizeStyledTemplates(outFiles, mintStandard);
+  for (const [path, content] of Object.entries(styled.files)) outFiles[path] = content;
+
+  if (hoisted.size > 0) {
+    for (const path of roots.keys()) {
+      outFiles[path] = applyBareVarFallbacks(outFiles[path] as string, hoisted);
+    }
   }
 
   const tokenList: Token[] = [...tokens.values()].map((t) => ({

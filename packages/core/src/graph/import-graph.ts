@@ -5,7 +5,7 @@
  * unbounded subtree.
  */
 
-import type { Project, SourceFile } from 'ts-morph';
+import { Node, SyntaxKind, type ImportDeclaration, type Project, type SourceFile } from 'ts-morph';
 import type { LoadedProject } from '../types/project.js';
 import {
   classifySpecifier,
@@ -15,8 +15,12 @@ import {
   STYLE_EXT,
   ASSET_EXT,
 } from './resolve-module.js';
+import { traceNamedImports } from './barrel.js';
 
-const MAX_LOCAL_FILES = 60;
+// Higher than the old CDN-era 60 (local esbuild — a Go subprocess — handles big
+// subtrees). Covers real organisms that transitively reach shared/api layers,
+// while a whole-page composition still exceeds it and stays code-only.
+const MAX_LOCAL_FILES = 600;
 
 export interface ImportGraph {
   readonly entryFile: string;
@@ -30,12 +34,18 @@ export interface ImportGraph {
 interface SpecRef {
   readonly spec: string;
   targetSourceFile(): SourceFile | undefined;
+  /** The declaration, when this edge came from an import (never a re-export). */
+  readonly imp?: ImportDeclaration;
 }
 
 function specRefs(sf: SourceFile): SpecRef[] {
   const refs: SpecRef[] = [];
   for (const imp of sf.getImportDeclarations()) {
-    refs.push({ spec: imp.getModuleSpecifierValue(), targetSourceFile: () => imp.getModuleSpecifierSourceFile() });
+    refs.push({
+      spec: imp.getModuleSpecifierValue(),
+      targetSourceFile: () => imp.getModuleSpecifierSourceFile(),
+      imp,
+    });
   }
   for (const exp of sf.getExportDeclarations()) {
     const spec = exp.getModuleSpecifierValue();
@@ -43,13 +53,40 @@ function specRefs(sf: SourceFile): SpecRef[] {
       refs.push({ spec, targetSourceFile: () => exp.getModuleSpecifierSourceFile() });
     }
   }
+  // Deferred edges — dynamic `import('...')` and CommonJS `require('...')` — with
+  // a string-literal target. Static-only walking misses these, so their target
+  // never enters the bundle and esbuild later fails to resolve the surviving
+  // call. Resolve on disk (ts-morph gives no source file for a call expression).
+  for (const spec of deferredImportSpecifiers(sf)) {
+    refs.push({ spec, targetSourceFile: () => undefined });
+  }
   return refs;
+}
+
+/** True for a `import('x')` or `require('x')` call node. */
+export function isDeferredImportCall(call: import('ts-morph').CallExpression): boolean {
+  const expr = call.getExpression();
+  if (expr.getKind() === SyntaxKind.ImportKeyword) return true;
+  return Node.isIdentifier(expr) && expr.getText() === 'require';
+}
+
+/** String-literal specifiers of `import('...')` / `require('...')` calls in a file. */
+export function deferredImportSpecifiers(sf: SourceFile): string[] {
+  const out: string[] = [];
+  for (const call of sf.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+    if (!isDeferredImportCall(call)) continue;
+    const arg = call.getArguments()[0];
+    if (arg && Node.isStringLiteral(arg)) out.push(arg.getLiteralValue());
+  }
+  return out;
 }
 
 export function buildImportGraph(
   project: Project,
   entryFile: string,
   loaded: LoadedProject,
+  /** Additional roots to bundle alongside the entry, e.g. the app's theme. */
+  extraRoots: readonly string[] = [],
 ): ImportGraph {
   const localFiles = new Set<string>();
   const styleFiles = new Set<string>();
@@ -58,7 +95,7 @@ export function buildImportGraph(
   const warnings: string[] = [];
 
   const visited = new Set<string>();
-  const queue: string[] = [entryFile];
+  const queue: string[] = [entryFile, ...extraRoots];
 
   while (queue.length > 0) {
     const file = queue.shift() as string;
@@ -90,11 +127,21 @@ export function buildImportGraph(
         const abs = resolveLocalSpecifier(ref.spec, file, loaded);
         if (!abs) {
           warnings.push(`Unresolved asset: ${ref.spec}`);
-        } else if (STYLE_EXT.test(abs)) {
+        } else if (STYLE_EXT.test(abs) || /\.json$/.test(abs)) {
+          // JSON is copied into the bundle verbatim; esbuild imports it natively.
+          // (Left dangling it would fail the whole build — e.g. i18n message files.)
           styleFiles.add(abs);
         } else {
           assets.add(abs);
         }
+        continue;
+      }
+
+      // Named imports: follow the symbols, not the module. Past a barrel that
+      // lands on the one file declaring each — instead of its whole subtree.
+      const traced = ref.imp ? traceNamedImports(ref.imp, loaded) : null;
+      if (traced) {
+        for (const t of traced) queue.push(t.file);
         continue;
       }
 

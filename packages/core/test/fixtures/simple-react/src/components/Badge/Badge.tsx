@@ -20,3 +20,7 @@ export function Badge({ children, color = '#10b981' }: BadgeProps) {
   };
   return <span style={style}>{children}</span>;
 }
+
+// Named + default export of the same declaration — a very common real-world
+// pattern. It must be catalogued once, not twice.
+export default Badge;

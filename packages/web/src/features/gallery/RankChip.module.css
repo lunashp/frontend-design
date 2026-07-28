@@ -8,9 +8,14 @@
   font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0.04em;
-  color: var(--rank);
-  background: color-mix(in oklch, var(--rank) 12%, transparent);
-  border: 1px solid color-mix(in oklch, var(--rank) 30%, transparent);
+  /* The label is set in parchment, not in the rank colour. The word already
+     says "Atom"; the colour is reinforcement, so it does not have to carry
+     text contrast — which frees the four ranks to sit at genuinely different
+     lightnesses (see --rank-* in tokens.css) instead of being flattened to
+     one legible value. Meaning is never in the colour alone. */
+  color: var(--text);
+  background: color-mix(in oklch, var(--rank) 9%, transparent);
+  border: 1px solid color-mix(in oklch, var(--rank) 22%, transparent);
   white-space: nowrap;
 }
 
@@ -19,7 +24,6 @@
   height: 6px;
   border-radius: 50%;
   background: var(--rank);
-  box-shadow: 0 0 8px color-mix(in oklch, var(--rank) 60%, transparent);
 }
 
 .dotOnly {

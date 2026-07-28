@@ -79,7 +79,7 @@ export const reactAdapter: FrameworkAdapter = {
     return buildReactEntry(input);
   },
 
-  generateProviderStubs(descriptor: ComponentDescriptor, program): ProviderStubResult {
-    return generateReactProviderStubs(descriptor, handleOf(program));
+  generateProviderStubs(descriptor: ComponentDescriptor, program, deps, preview): ProviderStubResult {
+    return generateReactProviderStubs(descriptor, handleOf(program), deps, preview);
   },
 };

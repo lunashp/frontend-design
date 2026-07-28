@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    // The browser harness needs `vite/client` for the app's CSS-module imports;
+    // the runner that drives it is a Node script, hence both.
+    "types": ["node", "vite/client"],
+    "noEmit": true
+  },
+  "include": ["e2e/**/*.ts", "e2e/**/*.tsx"],
+  "exclude": ["dist"]
+}

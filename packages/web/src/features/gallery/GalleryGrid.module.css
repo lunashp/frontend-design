@@ -1,7 +1,35 @@
-.grid {
+/* The spacer: reserves the full collection's height (set inline) so the scrollbar
+   reflects all N components even though only a window of rows is mounted. */
+.viewport {
+  position: relative;
+  width: 100%;
+}
+
+/* One virtualized row, absolutely positioned at its real offset via translateY.
+   `--cols` (set inline from the measured auto-fill count) makes this identical to
+   the old `repeat(auto-fill, minmax(248px, 1fr))` grid at every breakpoint —
+   responsive multi-column, never a forced single column. `minmax(0, 1fr)` lets
+   tracks shrink below 248px only when the column count itself has dropped, which
+   avoids horizontal overflow at the narrow end. */
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   gap: var(--space-4);
+}
+
+/* Stands in for a row that arrow-key navigation is heading for but that is not
+   mounted yet (the grid is virtualized). Nothing to see — it exists only as a
+   scrollIntoView target, so the browser resolves the scroll container for us. */
+.scrollMarker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
 }
 
 .empty {

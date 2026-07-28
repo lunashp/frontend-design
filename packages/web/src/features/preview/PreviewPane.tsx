@@ -1,45 +1,60 @@
-import { lazy, Suspense } from 'react';
-import type { ComponentArtifact, Renderability } from '../../api/types.js';
+import { useState } from 'react';
+import type { ComponentArtifact } from '../../api/types.js';
+import { BackingToggle } from './BackingToggle.js';
+import type { PreviewBacking } from './backing.js';
+import { ColourSourceCaption } from './ColourSourceCaption.js';
 import { DepsList } from './DepsList.js';
+import { LocalPreview } from './LocalPreview.js';
+import { renderabilityLabel } from './renderability.js';
+import { classifyCodeOnly } from './code-only-reason.js';
 import styles from './PreviewPane.module.css';
 
-const SandboxView = lazy(() => import('./SandboxView.js'));
-
-const RENDERABILITY: Record<Renderability, { label: string; tone: string; blurb: string }> = {
-  full: { label: 'Isolated render', tone: 'ok', blurb: 'Renders cleanly with no app context.' },
-  stubbed: {
-    label: 'Stubbed render',
-    tone: 'warn',
-    blurb: 'Needs app context — shown without providers; may look off.',
-  },
-  'code-only': {
-    label: 'Code only',
-    tone: 'danger',
-    blurb: "Can't run live in the sandbox.",
-  },
-};
-
-export function PreviewPane({ artifact }: { artifact: ComponentArtifact }) {
+export function PreviewPane({
+  artifact,
+  projectRoot,
+}: {
+  artifact: ComponentArtifact;
+  projectRoot: string;
+}) {
   const spec = artifact.sandpack;
-  const meta = RENDERABILITY[spec.renderability];
+  const meta = renderabilityLabel(artifact);
+  const [backing, setBacking] = useState<PreviewBacking>('checker');
 
   return (
     <div className={styles.pane}>
       <div className={styles.badge} data-tone={meta.tone}>
         <span className={styles.badgeDot} />
         <span className={styles.badgeLabel}>{meta.label}</span>
+        {meta.stubbed.length > 0 && (
+          <span className={styles.stubCount} title="Modules swapped for local stubs — see notes below">
+            {meta.stubbed.length} stubbed
+          </span>
+        )}
         <span className={styles.badgeBlurb}>{meta.blurb}</span>
       </div>
 
       {spec.renderability === 'code-only' ? (
-        <div className={styles.codeOnly}>
-          This component can’t run live in the sandbox. Its portable code and dependency list are
-          on the Portable tab.
-        </div>
+        (() => {
+          // A specific reason, not one generic line — above all, a genuine Server
+          // Component is named as such (a fact about the component, not a tool
+          // failure) rather than lumped in with "too complex".
+          const reason = classifyCodeOnly(artifact.bundle);
+          return (
+            <div className={styles.codeOnly} data-kind={reason.kind}>
+              <strong className={styles.codeOnlyHead}>{reason.headline}</strong>
+              <span>{reason.detail}</span>
+            </div>
+          );
+        })()
       ) : (
-        <Suspense fallback={<div className={styles.state}>Loading sandbox…</div>}>
-          <SandboxView spec={spec} />
-        </Suspense>
+        <>
+          <div className={styles.stageHead}>
+            <span className="eyebrow">Backing</span>
+            <BackingToggle value={backing} onChange={setBacking} />
+          </div>
+          <LocalPreview projectRoot={projectRoot} id={artifact.descriptor.id} backing={backing} />
+          <ColourSourceCaption bundle={artifact.bundle} />
+        </>
       )}
 
       {spec.notes.length > 0 && (

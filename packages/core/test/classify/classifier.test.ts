@@ -57,10 +57,38 @@ describe('classify', () => {
     expect(classify(desc('Stack'), signals({ childComponentCount: 1 })).kind).toBe('layout');
   });
 
-  it('treats context consumers as containers with a nonzero score', () => {
-    const c = classify(desc('Panel'), signals({ contextConsumers: ['useTheme'] }));
+  it('treats app-state context consumers as containers with a nonzero score', () => {
+    const c = classify(desc('Panel'), signals({ contextConsumers: ['useAuth'] }));
     expect(c.kind).toBe('container');
     expect(c.contextDependencyScore).toBe(1.5);
+  });
+
+  // Re-weighted: `useTheme` used to score 1.5 and force kind=container here,
+  // which on a real target demoted 98 files to `stubbed` on that signal alone.
+  // A theme is a styling concern with a default (or a provider the preview
+  // stubs), so it must not make a presentational atom look context-bound.
+  it.each(['useTheme', 'useColorMode', 'useStyledTheme', 'ThemeContext'])(
+    'does not treat the styling context %s as app context',
+    (consumer) => {
+      const c = classify(desc('Panel'), signals({ contextConsumers: [consumer] }));
+      expect(c.kind).toBe('presentational');
+      expect(c.contextDependencyScore).toBe(0);
+    },
+  );
+
+  it('still scores the app context when a component reads both', () => {
+    const c = classify(desc('Panel'), signals({ contextConsumers: ['useTheme', 'useAuth'] }));
+    expect(c.kind).toBe('container');
+    expect(c.contextDependencyScore).toBe(1.5);
+  });
+
+  it('keeps store usage a container signal regardless of the theme', () => {
+    const c = classify(
+      desc('Panel'),
+      signals({ usesStore: true, contextConsumers: ['useTheme'] }),
+    );
+    expect(c.kind).toBe('container');
+    expect(c.contextDependencyScore).toBe(3);
   });
 
   it('detects pages by name when they compose children', () => {

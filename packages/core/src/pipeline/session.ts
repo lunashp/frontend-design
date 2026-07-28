@@ -7,16 +7,29 @@
 import type { Project } from 'ts-morph';
 import type { ProjectRef, LoadedProject } from '../types/project.js';
 import type { ComponentDescriptor } from '../types/component.js';
-import type { ComponentArtifact, ComponentSummary, ScanResult } from '../types/artifact.js';
+import type {
+  ComponentArtifact,
+  ComponentSummary,
+  ComponentUsage,
+  ScanFailure,
+  ScanResult,
+} from '../types/artifact.js';
 import type { FrameworkAdapter, FrameworkProgram } from '../types/adapter.js';
 import { ARTIFACT_VERSION } from '../types/artifact.js';
 import { AdapterRegistry } from '../adapters/registry.js';
 import { createDefaultRegistry } from '../adapters/default-registry.js';
 import { loadProject } from '../project/load-project.js';
 import { classify } from '../classify/classifier.js';
+import { detectDegenerateHeuristics } from '../classify/heuristic-health.js';
 import { resolvePortability } from '../portability/portability-resolver.js';
+import { resolveMany } from '../portability/resolve-many.js';
+import type { PortableKit } from '../types/portable-kit.js';
+import { buildUsageIndex } from '../graph/usage-index.js';
 import { tokenizeBundle, TOKENS_CSS_PATH } from '../tokenize/tokenization-transform.js';
+import { mineThemeTokens, type ThemeMiningResult } from '../theme/theme-extractor.js';
+import type { TokenModel } from '../types/token-model.js';
 import { generateSampleProps } from '../sandbox/sample-props.js';
+import { buildObjectSampleResolver } from '../sandbox/synthesize-props.js';
 import { scaffoldSandbox } from '../sandbox/sandbox-scaffolder.js';
 import type { PortableBundle } from '../types/portable-bundle.js';
 import { UnsupportedFrameworkError, ComponentNotFoundError, EngineError } from '../util/errors.js';
@@ -28,9 +41,50 @@ export interface EngineSessionOptions {
   readonly registry?: AdapterRegistry;
 }
 
+/** Hand the event loop back so queued I/O can run. See `scan()`. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/**
+ * The usage a component gets when the reverse graph found no importer (or could
+ * not run — e.g. a non-ts-morph adapter). Shared and never mutated, so every
+ * unused component points at the same frozen zero rather than allocating one.
+ */
+const EMPTY_USAGE: ComponentUsage = { usedByCount: 0, usedByFiles: [] };
+
 export class EngineSession {
   private descriptorsById = new Map<string, ComponentDescriptor>();
   private summariesById = new Map<string, ComponentSummary>();
+  /**
+   * Per-id artifact memo. A ComponentArtifact is immutable (buildArtifact builds
+   * it from fresh objects and every consumer only reads or spread-copies it —
+   * host serializes it, customizeArtifact/customizeSpec return new specs) and a
+   * session is per-scan (a re-scan constructs a new EngineSession, so this map is
+   * never handed stale summaries), so caching the whole artifact for the session
+   * lifetime is safe. It exists because the web bounces
+   * Details<->Preview<->Portable<->Customize and re-opens components, and each
+   * buildArtifact re-ran the full resolvePortability + tokenizeBundle otherwise —
+   * a wasted rebuild on every one of those hits.
+   */
+  private artifactsById = new Map<string, ComponentArtifact>();
+
+  /**
+   * Per-id-set kit memo, keyed by the SORTED, deduped ids so `[a,b]` and `[b,a]`
+   * hit the same slot (a kit is a set, not a sequence — its `components` list
+   * still follows the caller's order). Safe for the session lifetime for the same
+   * reason as `artifactsById`: a PortableKit is built from fresh objects and only
+   * read afterwards, and a re-scan constructs a new session.
+   */
+  private kitsByIdSet = new Map<string, PortableKit>();
+
+  /**
+   * Theme mining is theme-level, not component-level: the same `createTheme`
+   * literal yields the same derived tokens for every component. So it runs once
+   * per session and every buildArtifact reuses it. `undefined` = not yet
+   * computed; `null` = computed, nothing to mine (no themeRef or unreadable).
+   */
+  private minedTheme: ThemeMiningResult | null | undefined;
 
   private constructor(
     readonly loaded: LoadedProject,
@@ -56,40 +110,96 @@ export class EngineSession {
     return new EngineSession(loaded, adapter, program, logger);
   }
 
-  /** Discover + classify all components (P1). Caches descriptors for later phases. */
-  scan(): ScanResult {
+  /**
+   * Discover + classify all components (P1). Caches descriptors for later phases.
+   *
+   * Async only to yield between components: prop extraction is synchronous and
+   * is ~99% of a scan (527s of 530s on a 1133-component project), so a plain
+   * loop pins the event loop for the whole run. The process would then serve
+   * nothing — not even a health check — and progress events would queue up and
+   * flush only once the scan was already over.
+   */
+  async scan(): Promise<ScanResult> {
     const descriptors = this.adapter.discoverComponents(this.program);
     this.descriptorsById = new Map(descriptors.map((d) => [d.id, d]));
 
     const warnings: string[] = [];
-    const components: ComponentSummary[] = [];
-    this.summariesById = new Map();
+    const failures: ScanFailure[] = [];
+    const baseSummaries: ComponentSummary[] = [];
 
-    descriptors.forEach((descriptor, i) => {
+    for (const [i, descriptor] of descriptors.entries()) {
       try {
         const propModel = this.adapter.extractProps(descriptor, this.program);
         const signals = this.adapter.extractSignals(descriptor, this.program);
-        const classification = classify(descriptor, signals);
-        const summary: ComponentSummary = { descriptor, classification, propModel };
-        components.push(summary);
-        this.summariesById.set(descriptor.id, summary);
+        // Pass the prop model so the role facet can read the prop contract; the
+        // buildArtifact path reuses this same classification wholesale, so the
+        // role rides onto the full artifact for free.
+        const classification = classify(descriptor, signals, propModel);
+        baseSummaries.push({ descriptor, classification, signals, propModel });
       } catch (err) {
-        warnings.push(`Failed to analyze ${descriptor.name}: ${(err as Error).message}`);
+        // Recorded twice on purpose: `warnings` stays the human-readable log,
+        // `failures` names the component so a caller can link to the file
+        // instead of parsing the prose back apart.
+        const message = (err as Error).message;
+        warnings.push(`Failed to analyze ${descriptor.name}: ${message}`);
+        failures.push({
+          componentId: descriptor.id,
+          name: descriptor.name,
+          filePath: descriptor.filePath,
+          message,
+        });
       }
       this.logger.progress({
         phase: 'classify',
         message: descriptor.name,
         ratio: (i + 1) / Math.max(descriptors.length, 1),
       });
-    });
+      await yieldToEventLoop();
+    }
+
+    // Reverse import graph, computed ONCE per scan AFTER classification: walk
+    // every analyzed source file once and credit each import to the component it
+    // references, so each summary carries how many OTHER files import it. Run
+    // after the yielding classify loop (not before it) so its single synchronous
+    // pass never delays the first event-loop turn the host relies on. Attached
+    // immutably. See buildUsageIndex for the honesty bar — it is a rank signal,
+    // never a filter.
+    const usageIndex = this.buildUsage(descriptors);
+    const components: ComponentSummary[] = baseSummaries.map((s) => ({
+      ...s,
+      usage: usageIndex.get(s.descriptor.id) ?? EMPTY_USAGE,
+    }));
+    this.summariesById = new Map(components.map((s) => [s.descriptor.id, s]));
+
+    // Graded only once the whole scan is in: a detector's hit-rate is a
+    // property of the corpus, not of any one component. It is returned as its
+    // own typed field rather than flattened into `warnings`: appended there it
+    // sorted LAST, so every consumer that caps that list cut the scan-level
+    // finding first — on exactly the large targets whose scale makes it
+    // diagnostic. See `ScanResult.warnings`.
+    const heuristicWarnings = detectDegenerateHeuristics(components, this.loaded.pkg);
 
     return {
       artifactVersion: ARTIFACT_VERSION,
       projectRoot: this.loaded.rootPath,
       framework: this.loaded.framework,
       components,
+      failures,
       warnings,
+      heuristicWarnings,
     };
+  }
+
+  /**
+   * Build the reverse import graph for the discovered set. Returns an empty map
+   * when the adapter exposes no ts-morph project (e.g. the synthetic test
+   * adapters, whose `handle` is null): usage is a best-effort enrichment, so a
+   * missing program yields zero usage rather than failing the whole scan.
+   */
+  private buildUsage(descriptors: readonly ComponentDescriptor[]): Map<string, ComponentUsage> {
+    const tsProject = (this.program.handle as { tsProject?: Project } | null)?.tsProject;
+    if (!tsProject) return new Map();
+    return buildUsageIndex(tsProject, descriptors, this.loaded);
   }
 
   /** Look up a previously-scanned descriptor by id (used by P2+ artifact builds). */
@@ -105,6 +215,9 @@ export class EngineSession {
    * until P4.
    */
   buildArtifact(id: string): ComponentArtifact {
+    const memoized = this.artifactsById.get(id);
+    if (memoized) return memoized;
+
     const summary = this.summariesById.get(id);
     if (!summary) throw new ComponentNotFoundError(id);
 
@@ -122,16 +235,43 @@ export class EngineSession {
       ...rawBundle,
       files: { ...tok.files, [TOKENS_CSS_PATH]: tok.tokensCss },
     };
-    const tokenModel = tok.tokenModel;
+    // Attach statically-mined theme tokens (source:"derived") ALONGSIDE the
+    // extracted CSS tokens — both coexist, distinguished by `source`. The CSS
+    // tokenization (and `tok.files`) is left byte-for-byte unchanged; mining
+    // only appends to the token model, so a plain-CSS target is unaffected.
+    const tokenModel = this.withDerivedTokens(tok.tokenModel);
 
-    const sampleProps = generateSampleProps(summary.propModel, summary.descriptor);
-    const providers = this.adapter.generateProviderStubs(summary.descriptor, this.program);
+    // Resolve required object props' real shapes from their TS types, so a
+    // component reading nested data (`row.items.map()`) renders instead of
+    // throwing. Backed by the ts-morph project we already hold here.
+    const resolveObjectSample = buildObjectSampleResolver(
+      tsProject,
+      summary.descriptor.filePath,
+      summary.descriptor.exportName,
+      summary.descriptor.name,
+    );
+    const sampleProps = generateSampleProps(
+      summary.propModel,
+      summary.descriptor,
+      resolveObjectSample,
+    );
+    const providers = this.adapter.generateProviderStubs(
+      summary.descriptor,
+      this.program,
+      bundle.externalDeps,
+      {
+        theme: bundle.previewTheme,
+        messagesPath: bundle.previewMessages,
+        providers: bundle.previewProviders,
+      },
+    );
     const entry = this.adapter.buildEntry({
       descriptor: summary.descriptor,
       bundle,
       sampleProps,
       providers,
       tokenCssPath: TOKENS_CSS_PATH,
+      propModel: summary.propModel,
     });
     const sandpack = scaffoldSandbox({
       classification: summary.classification,
@@ -141,16 +281,93 @@ export class EngineSession {
       propModel: summary.propModel,
       sampleProps,
       providerDeps: providers.dependencies,
+      // The whole result, not just its deps: the scaffolder needs `unresolved`
+      // and "was a wrapper produced at all" to tell a faithful render from a
+      // bare one. Passing deps alone left `input.providers` undefined in
+      // production, so every context component was reported with the same
+      // placeholder wording no matter what the stubber actually managed.
+      providers,
     });
 
-    return {
+    const artifact: ComponentArtifact = {
       artifactVersion: ARTIFACT_VERSION,
       descriptor: summary.descriptor,
       classification: summary.classification,
+      signals: summary.signals,
       propModel: summary.propModel,
+      // Carry the scan-time reuse signal onto the full artifact so an opened
+      // component keeps its "used by N" without a second lookup.
+      usage: summary.usage,
       bundle,
       tokenModel,
       sandpack,
     };
+    // Memoize on first build; later lookups skip resolvePortability +
+    // tokenizeBundle entirely. Safe for the session lifetime — see the
+    // `artifactsById` field comment for why the artifact can never go stale.
+    this.artifactsById.set(id, artifact);
+    return artifact;
+  }
+
+  /**
+   * Mine the target's TS theme once (memoized) so every artifact shares the
+   * result. `null` when no theme was detected or it could not be read/mined.
+   */
+  private themeMining(): ThemeMiningResult | null {
+    if (this.minedTheme !== undefined) return this.minedTheme;
+    const ref = this.loaded.themeRef;
+    this.minedTheme = ref ? mineThemeTokens(ref) : null;
+    return this.minedTheme;
+  }
+
+  /**
+   * Merge derived theme tokens (+ presets + disclosure) into the CSS-extracted
+   * token model. Returns the input unchanged when there is no theme to mine, so
+   * a plain-CSS target keeps exactly its extracted tokens.
+   */
+  private withDerivedTokens(extracted: TokenModel): TokenModel {
+    const mined = this.themeMining();
+    if (!mined) return extracted;
+    return {
+      tokens: [...extracted.tokens, ...mined.tokens],
+      ...(mined.themes ? { themes: mined.themes } : {}),
+      derivedFrom: mined.disclosure,
+    };
+  }
+
+  /**
+   * Build a PortableKit for a SET of scanned components (the harvest endpoint):
+   * one shared token namespace, shared files deduped, deps merged with conflicts
+   * recorded. `scan()` must have run first. Reuses the cached descriptors, so no
+   * re-scan; memoized by the id-set.
+   */
+  buildKit(ids: readonly string[]): PortableKit {
+    // Validate every id up front so an unknown one is a clear error, not a later
+    // crash deep in the graph walk. Ordered `components` follows the caller's
+    // (deduped) order; the memo key is the sorted set so order never re-resolves.
+    const seen = new Set<string>();
+    const orderedIds: string[] = [];
+    const descriptors: ComponentDescriptor[] = [];
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const summary = this.summariesById.get(id);
+      if (!summary) throw new ComponentNotFoundError(id);
+      orderedIds.push(id);
+      descriptors.push(summary.descriptor);
+    }
+
+    const key = [...orderedIds].sort().join(' ');
+    const memoized = this.kitsByIdSet.get(key);
+    if (memoized) return memoized;
+
+    const tsProject = (this.program.handle as { tsProject?: Project }).tsProject;
+    if (!tsProject) {
+      throw new EngineError('Adapter does not expose a ts-morph project', 'NO_TS_PROJECT');
+    }
+
+    const kit = resolveMany(tsProject, descriptors, this.loaded);
+    this.kitsByIdSet.set(key, kit);
+    return kit;
   }
 }

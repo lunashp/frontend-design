@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inspector keyboard harness</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      /* The panel's own styles are height:100% all the way down, so without a
+         sized host the preview iframe collapses to 0px and can never be focused
+         by a real user — nor by the test driving it. */
+      .harness-dock {
+        width: 520px;
+        height: 760px;
+      }
+      .harness-slide-over {
+        position: fixed;
+        inset: 0 0 0 auto;
+        width: min(440px, 100vw);
+        z-index: 41;
+      }
+      .harness-scrim {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: rgba(0, 0, 0, 0.5);
+      }
+      /* Beats LocalPreview's inline height:100% (non-important inline styles
+         lose to an important rule), so the frame has real box. */
+      iframe {
+        height: 240px !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
