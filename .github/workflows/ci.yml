@@ -12,9 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — the action reads `packageManager` from
+      # package.json. Pinning it in both places makes action-setup refuse to run
+      # ("Multiple versions of pnpm specified"), which is why every CI run on
+      # this branch died at setup before a single check executed.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -34,9 +36,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # No `version:` here on purpose — the action reads `packageManager` from
+      # package.json. Pinning it in both places makes action-setup refuse to run
+      # ("Multiple versions of pnpm specified"), which is why every CI run on
+      # this branch died at setup before a single check executed.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
