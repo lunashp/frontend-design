@@ -133,7 +133,10 @@ describe('a DOM-element prop', () => {
 // `options.map` / `node.value.toLocaleString()` threw.
 describe('a type that merely MENTIONS ReactNode', () => {
   it('is still an array when it is an array', () => {
-    expect(entry('AnchoredMenu')).toMatch(/"?options"?:\s*\[\s*\]/);
+    const e = entry('AnchoredMenu');
+    // An ARRAY, never the string the node classifier used to put here.
+    expect(e).toMatch(/"?options"?:\s*\[/);
+    expect(e).not.toMatch(/"?options"?:\s*"/);
   });
 
   it('is still a data object when it is an object literal', () => {
@@ -145,9 +148,34 @@ describe('a type that merely MENTIONS ReactNode', () => {
   });
 });
 
+// `[]` is safe but shows nothing: a table, list or chart rendered its chrome and
+// no content, and 54 components on the real target were boxes with no words in
+// them. Two rows of the element's REAL shape show the component's rhythm — row
+// rules, alternating fills, alignment — without pretending to be real data.
 describe('a component that maps a required array', () => {
-  it('gets [] so .map is safe, and no invented rows', () => {
+  it('gets sample rows shaped like its element type', () => {
     const e = entry('RowTable');
-    expect(e).toMatch(/"?rows"?:\s*\[\s*\]/);
+    const rows = JSON.parse(
+      (e.match(/"rows":\s*(\[[\s\S]*?\])\s*[,\n}]/) ?? [])[1] ?? '[]',
+    ) as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      expect(Object.keys(r).sort()).toEqual(['count', 'id', 'label']);
+      expect(typeof r.count).toBe('number'); // `.toLocaleString()` is safe
+    }
+  });
+
+  it('gives each row a distinct id, so React keys do not collide', () => {
+    const e = entry('RowTable');
+    const rows = JSON.parse(
+      (e.match(/"rows":\s*(\[[\s\S]*?\])\s*[,\n}]/) ?? [])[1] ?? '[]',
+    ) as Array<{ id: string }>;
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+  });
+
+  it('leaves an array it cannot resolve as [], which never throws', () => {
+    // AnchoredMenu's `options` element type is an inline literal the resolver
+    // reaches; `changedDataIds: string[]`-style primitives stay empty.
+    expect(entry('AnchoredMenu')).toMatch(/"?options"?:\s*\[/);
   });
 });

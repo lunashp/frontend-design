@@ -127,7 +127,14 @@ function valueForUnknown(prop: PropControl, resolveObject?: ObjectSampleResolver
   // read as a Date/array prop and fed a Date/[] the component then CALLS. Skipped
   // here so the entry builder stubs it as a real callable instead.
   if (FUNCTION_TYPE.test(tsType)) return SKIP;
-  if (ARRAY_TYPE.test(tsType)) return [];
+  if (ARRAY_TYPE.test(tsType)) {
+    // `[]` is SAFE for `.map`/`.length`/spread — and shows nothing. Ask the shape
+    // resolver for sample rows first: a table or list rendered its chrome and no
+    // content, which is the single largest remaining "box with no words" case.
+    // Anything it can't resolve keeps the empty array, which never throws.
+    const rows = resolveObject?.(prop.name);
+    return Array.isArray(rows) ? rows : [];
+  }
   if (DATE_TYPE.test(tsType)) return SAMPLE_DATE;
   // A ref BEFORE the DOM rule — its type names the element it holds.
   if (REF_TYPE.test(tsType)) return { current: null };
