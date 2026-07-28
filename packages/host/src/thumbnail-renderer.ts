@@ -44,10 +44,43 @@ export interface RenderThumbnailInput {
 export type ThumbnailRenderer = (input: RenderThumbnailInput) => Promise<Buffer | null>;
 
 /**
- * Screenshot the component's own root. Points the shot at `#root > *`, falling
- * back to `#root`, then the viewport — the same target selection the pre-pool
- * renderer used, so the pixels are unchanged.
+ * An overlay renders through a PORTAL, onto document.body — outside `#root`. So
+ * for a dialog, drawer, menu or tooltip, `#root` holds nothing and shooting it
+ * catches only the full-viewport backdrop: a flat grey band that reads as broken.
+ * These selectors aim the shot at the overlay's own surface instead. Roles first
+ * (framework-agnostic), then MUI's paper classes for the overlays that carry no
+ * role of their own.
  */
+export const PORTAL_CONTENT_SELECTOR = [
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[role="menu"]',
+  '[role="tooltip"]',
+  '[role="listbox"]',
+  '.MuiDialog-paper',
+  '.MuiDrawer-paper',
+  '.MuiPopover-paper',
+  '.MuiMenu-paper',
+  '.MuiTooltip-tooltip',
+].join(', ');
+
+/** The subset of Playwright's `Page` this selection needs — so it is testable. */
+export interface ThumbnailPage<T> {
+  $(selector: string): Promise<T | null>;
+}
+
+/**
+ * Choose what to photograph: the component's own root child, else an overlay's
+ * portal surface, else nothing. Returning null means "no thumbnail" — a card
+ * showing its monogram is honest, a grey tile is not.
+ */
+export async function pickThumbnailTarget<T>(page: ThumbnailPage<T>): Promise<T | null> {
+  const inRoot = await page.$('#root > *');
+  if (inRoot) return inRoot;
+  return page.$(PORTAL_CONTENT_SELECTOR);
+}
+
+/** Screenshot the component's own root, or an overlay's portal surface. */
 async function screenshotComponent(page: Page): Promise<Buffer | null> {
   // A component that can't render in isolation shows the boundary's explanation.
   // Shooting THAT gives every such card a cropped paragraph of prose where a
@@ -55,8 +88,8 @@ async function screenshotComponent(page: Page): Promise<Buffer | null> {
   // fall back to its monogram.
   if (await page.$('[data-ce-unrenderable]')) return null;
 
-  const target = (await page.$('#root > *')) ?? (await page.$('#root'));
-  if (!target) return page.screenshot({ type: 'png' });
+  const target = await pickThumbnailTarget(page);
+  if (!target) return null;
   // An empty render (zero-size box) photographs as a blank grey tile, which reads
   // as broken; the monogram is the honest placeholder.
   const box = await target.boundingBox();

@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import type { SandpackSpec } from '@ce/core';
 import { shouldRenderThumbnail, thumbnailCacheKey } from '../src/thumbnail.js';
+import { pickThumbnailTarget, PORTAL_CONTENT_SELECTOR } from '../src/thumbnail-renderer.js';
 
 function spec(overrides: Partial<SandpackSpec> = {}): SandpackSpec {
   return {
@@ -79,5 +80,38 @@ describe('thumbnailCacheKey', () => {
       width: 320,
     });
     expect(key).toMatch(/^[a-z0-9-]+$/);
+  });
+});
+
+/**
+ * What the shot is aimed at. A dialog/drawer/menu renders through a portal onto
+ * document.body, so `#root` is empty and photographing it yields the backdrop —
+ * a flat grey band. This selection is pure over a `$`-only page, so it is unit
+ * tested with a fake instead of a browser.
+ */
+describe('pickThumbnailTarget', () => {
+  const fakePage = (present: readonly string[]) => ({
+    $: async (selector: string) => (present.includes(selector) ? { sel: selector } : null),
+  });
+
+  it('prefers the component root child when the component renders in place', async () => {
+    const t = await pickThumbnailTarget(fakePage(['#root > *', PORTAL_CONTENT_SELECTOR]));
+    expect(t).toEqual({ sel: '#root > *' });
+  });
+
+  it('falls back to an overlay portal surface when #root is empty', async () => {
+    const t = await pickThumbnailTarget(fakePage([PORTAL_CONTENT_SELECTOR]));
+    expect(t).toEqual({ sel: PORTAL_CONTENT_SELECTOR });
+  });
+
+  it('returns null when nothing was painted — a monogram beats a grey tile', async () => {
+    expect(await pickThumbnailTarget(fakePage([]))).toBeNull();
+  });
+
+  it('aims at roles first so a non-MUI overlay is still photographed', () => {
+    expect(PORTAL_CONTENT_SELECTOR.startsWith('[role="dialog"]')).toBe(true);
+    for (const role of ['dialog', 'alertdialog', 'menu', 'tooltip', 'listbox']) {
+      expect(PORTAL_CONTENT_SELECTOR).toContain(`[role="${role}"]`);
+    }
   });
 });

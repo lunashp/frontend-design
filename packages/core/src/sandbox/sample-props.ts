@@ -54,6 +54,12 @@ const COMPONENT_TYPE = /\b(ComponentType|ElementType|FunctionComponent|Component
  */
 const ADORNMENT_SLOT = /(icon|indicator|adornment|avatar|thumbnail|thumb|logo|glyph)$/i;
 /**
+ * What an adornment slot gets when it is the component's ONLY content — an icon
+ * wrapper (`DisplayIconAndText`, whose single node prop is `icon`) renders an
+ * empty frame otherwise. One glyph fits the icon box a word would overflow.
+ */
+const ICON_PLACEHOLDER = '●';
+/**
  * A boolean that GATES whether the component renders at all — a modal, dialog,
  * drawer, popover or accordion closed by default paints an empty frame, which is
  * the one thing a design preview must not show. Opened unless the author
@@ -140,6 +146,15 @@ export function generateSampleProps(
   resolveObject?: ObjectSampleResolver,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  /** Does the component have a real content slot besides its adornments? If not,
+   *  emptying the adornments leaves nothing at all to render. */
+  const hasContentNode = propModel.props.some(
+    (p) =>
+      p.kind === 'node' &&
+      !FUNCTION_TYPE.test(p.tsType) &&
+      !ADORNMENT_SLOT.test(p.name) &&
+      (p.name === 'children' || NODE_ACCEPTS_STRING.test(p.tsType) || STRING_MEMBER.test(p.tsType)),
+  );
 
   for (const prop of propModel.props) {
     if (prop.kind === 'unknown') {
@@ -158,9 +173,11 @@ export function generateSampleProps(
       // Filling it with a string makes the component throw "x is not a function";
       // skip it here so the entry builder stubs it as a real callable.
       if (FUNCTION_TYPE.test(prop.tsType)) continue;
-      // An adornment slot wants a picture. Text in it overlaps the real content,
-      // so it stays empty whatever its type says it accepts.
-      if (ADORNMENT_SLOT.test(prop.name)) continue;
+      // An adornment slot wants a picture. Text in it overlaps the real content —
+      // but only when there IS real content. An icon wrapper whose single node
+      // prop is the icon renders an empty frame if this slot is emptied too.
+      const adornment = ADORNMENT_SLOT.test(prop.name);
+      if (adornment && hasContentNode) continue;
       // The text placeholder is valid only where a STRING is accepted: `children`,
       // a `ReactNode`/`ReactChild` content prop, or a union with a bare `string`
       // branch. An element-only prop (`avatar`/`icon`: `ReactElement`) rejects it —
@@ -174,7 +191,11 @@ export function generateSampleProps(
       // component's name. Every OTHER slot names ITSELF — a component with a
       // label, a title and a footer used to render its own name three times over.
       if (acceptsString) {
-        out[prop.name] = prop.name === 'children' ? descriptor.name : humanize(prop.name);
+        out[prop.name] = adornment
+          ? ICON_PLACEHOLDER
+          : prop.name === 'children'
+            ? descriptor.name
+            : humanize(prop.name);
       }
       continue;
     }

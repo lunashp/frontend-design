@@ -211,6 +211,26 @@ describe('generateSampleProps', () => {
     expect(out).toEqual({ children: 'Widget' });
   });
 
+  // …but an icon wrapper (`DisplayIconAndText`: `icon` is its ONLY node prop) has
+  // nothing else to show. Emptying that slot rendered a 0px² frame, so when the
+  // adornment IS the content it gets a compact glyph — a word would overflow the
+  // icon box, which is the problem the rule above exists to prevent.
+  it('fills an adornment slot that is the component ONLY content, with a glyph', () => {
+    const out = gen([
+      prop({ name: 'icon', kind: 'node', tsType: 'ReactNode', required: true }),
+      prop({ name: 'boxSx', kind: 'unknown', tsType: 'SxProps<Theme>' }),
+    ]);
+    expect(out.icon).toBe('●');
+  });
+
+  it('still empties an adornment slot once real content exists beside it', () => {
+    const out = gen([
+      prop({ name: 'icon', kind: 'node', tsType: 'ReactNode', required: true }),
+      prop({ name: 'label', kind: 'node', tsType: 'ReactNode' }),
+    ]);
+    expect(out).toEqual({ label: 'Label' });
+  });
+
   it('never repeats the component name across several node slots', () => {
     const out = gen([
       prop({ name: 'children', kind: 'node', tsType: 'ReactNode' }),
