@@ -110,6 +110,41 @@ describe('a title prop', () => {
   });
 });
 
+// A live DOM node cannot be synthesized. `{}` is truthy, so `Boolean(anchorEl)`
+// opened the overlay against a non-element and MUI threw from inside its modal
+// manager — 10 components on the real target, every one of them a menu, popover
+// or dropdown showing an error card where its trigger should be.
+describe('a DOM-element prop', () => {
+  it('is null (a value its own type permits), never a truthy empty object', () => {
+    const e = entry('AnchoredMenu');
+    expect(e).toMatch(/"?anchorEl"?:\s*null/);
+    expect(e).not.toMatch(/"?anchorEl"?:\s*\{\s*\}/);
+  });
+
+  it('does not swallow a REF, which is a container for an element, not one', () => {
+    // Skipping it left `containerRef.current` reading off undefined.
+    expect(entry('AnchoredMenu')).toMatch(/"?containerRef"?:\s*\{\s*"?current"?:\s*null\s*\}/);
+  });
+});
+
+// The control classifier called anything a `node` if the words "ReactNode"
+// appeared ANYWHERE in its type text — including inside an array's element type
+// or an object literal's members. Those props were then filled with a string, and
+// `options.map` / `node.value.toLocaleString()` threw.
+describe('a type that merely MENTIONS ReactNode', () => {
+  it('is still an array when it is an array', () => {
+    expect(entry('AnchoredMenu')).toMatch(/"?options"?:\s*\[\s*\]/);
+  });
+
+  it('is still a data object when it is an object literal', () => {
+    const e = entry('MetricNode');
+    expect(e).not.toMatch(/"?node"?:\s*"MetricNode"/);
+    // Synthesized from its real shape, so a nested read does not throw.
+    expect(e).toMatch(/"?node"?:\s*\{/);
+    expect(e).toMatch(/"?value"?:\s*0/);
+  });
+});
+
 describe('a component that maps a required array', () => {
   it('gets [] so .map is safe, and no invented rows', () => {
     const e = entry('RowTable');

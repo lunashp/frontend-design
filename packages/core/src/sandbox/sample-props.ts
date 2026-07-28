@@ -66,6 +66,25 @@ const ICON_PLACEHOLDER = '●';
  * declared a default of their own (an explicit `= false` is a decision, not a gap).
  */
 const VISIBILITY_GATE = /^(is)?(open(ed)?|visible|shown?|expanded)$/i;
+/**
+ * A LIVE DOM node — `HTMLElement`, `HTMLDivElement`, `Element`, `Node`,
+ * `EventTarget`. There is no synthesizing one, and `{}` is the worst answer
+ * available: it is TRUTHY, so a menu or popover doing `Boolean(anchorEl)` opens
+ * against a non-element and the overlay library throws from inside its own modal
+ * manager. Ten components on a real target showed an error card where their
+ * trigger button should have been. `\bNode\b` does not match `ReactNode` — the
+ * word boundary requires a non-word character before the N.
+ */
+const DOM_ELEMENT_TYPE = /\b(HTML[A-Za-z]*Element|SVG[A-Za-z]*Element|Element|Node|EventTarget|Range)\b/;
+/** Does the declared type admit `null`? Then `null` is the honest empty value. */
+const ADMITS_NULL = /(^|\|)\s*null\s*(\||$)/;
+/**
+ * A REF is a container FOR an element, not an element — and its type text names
+ * the element it holds (`RefObject<HTMLDivElement>`), so the DOM rule above would
+ * swallow it and leave `ref.current` reading off undefined. An empty ref is the
+ * shape every consumer already handles.
+ */
+const REF_TYPE = /\b(Mutable)?Ref(Object)?\s*</;
 
 /**
  * A value for a prop the control model classified as `unknown` (an object,
@@ -110,6 +129,11 @@ function valueForUnknown(prop: PropControl, resolveObject?: ObjectSampleResolver
   if (FUNCTION_TYPE.test(tsType)) return SKIP;
   if (ARRAY_TYPE.test(tsType)) return [];
   if (DATE_TYPE.test(tsType)) return SAMPLE_DATE;
+  // A ref BEFORE the DOM rule — its type names the element it holds.
+  if (REF_TYPE.test(tsType)) return { current: null };
+  // A live DOM node, before the object fallback: `{}` would be truthy and open
+  // an anchor-based overlay against something that is not an element.
+  if (DOM_ELEMENT_TYPE.test(tsType)) return ADMITS_NULL.test(tsType) ? null : SKIP;
   if (!prop.required) return SKIP;
   if (STRING_MEMBER.test(tsType)) return humanize(prop.name);
   if (COMPONENT_TYPE.test(tsType)) return SKIP;

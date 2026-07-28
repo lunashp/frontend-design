@@ -30,6 +30,24 @@ function enumOptions(prop: PropItem): string[] | undefined {
   return opts.length > 0 ? opts : undefined;
 }
 
+/**
+ * A COLLECTION or an OBJECT LITERAL at the top level — `Array<{…}>`, `Foo[]`,
+ * `{ id: string; icon?: ReactNode }`.
+ *
+ * These carry data, even when one of their members happens to be a ReactNode.
+ * The node test below matches the words "ReactNode" ANYWHERE in the type text, so
+ * without this guard `Array<{ label: string; icon?: ReactNode }>` was classified
+ * `node` and filled with a string — and the component's `options.map(…)` threw.
+ */
+function isCollectionOrObjectLiteral(raw: string): boolean {
+  const t = raw.trim();
+  return (
+    t.startsWith('{') ||
+    /^(readonly\s+)?(Array|ReadonlyArray)\s*</.test(t) ||
+    /\[\]\s*(\||$)/.test(t)
+  );
+}
+
 function mapKind(prop: PropItem, options: string[] | undefined): ControlKind {
   const typeName = prop.type.name;
   const raw = prop.type.raw ?? typeName;
@@ -37,7 +55,9 @@ function mapKind(prop: PropItem, options: string[] | undefined): ControlKind {
   if (options) return 'enum';
   if (typeName === 'boolean') return 'boolean';
   if (typeName === 'number') return 'number';
-  if (/ReactNode|ReactElement|JSX\.Element|ReactChild/.test(raw)) return 'node';
+  if (!isCollectionOrObjectLiteral(raw) && /ReactNode|ReactElement|JSX\.Element|ReactChild/.test(raw)) {
+    return 'node';
+  }
   if (/=>/.test(raw) || /^\s*\(/.test(raw)) return 'unknown'; // function props
   if (typeName === 'string') {
     return /colou?r|background|\bbg\b|fill|stroke/i.test(prop.name) ? 'color' : 'string';
