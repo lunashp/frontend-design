@@ -453,14 +453,67 @@ export function toPortableCode(a: ComponentArtifact) {
  * bundle files that belong to the SOURCE app's theme/i18n/providers, not to any
  * component, so they are not copied blind into a destination with its own theme.
  */
+/**
+ * How many characters of merged file bodies one kit may carry.
+ *
+ * A kit's files are unbounded — every source file of every component in the set.
+ * Measured against a real target, TWO components produced an 86KB payload (95% of
+ * it file bodies) and the MCP client refused the whole result: the agent got
+ * NOTHING from the very call the tool description tells it to prefer over N
+ * single-component calls. A budget with a named remainder beats a refusal.
+ */
+export const MAX_KIT_FILE_BYTES = 40_000;
+
+/**
+ * Fit a kit's files into the budget, entries first, then the rest smallest-first
+ * so the most files survive. What did not fit is NAMED — the caller can still
+ * fetch it with `get_portable_code` for the owning component — because a set that
+ * silently loses a file is a set that fails to compile in the destination repo
+ * for a reason nobody can see.
+ */
+export function budgetKitFiles(
+  files: Readonly<Record<string, string>>,
+  entryPaths: readonly string[],
+): { files: Record<string, string>; filesOmitted: string[]; filesTruncated: boolean } {
+  const entries = entryPaths.filter((p) => p in files);
+  const rest = Object.keys(files)
+    .filter((p) => !entries.includes(p))
+    .sort((a, b) => (files[a] as string).length - (files[b] as string).length);
+
+  const out: Record<string, string> = {};
+  const omitted: string[] = [];
+  let spent = 0;
+  // An entry IS the component. Losing it would leave a kit that names a component
+  // it does not contain, so entries go in whatever they cost.
+  for (const p of entries) {
+    out[p] = files[p] as string;
+    spent += (files[p] as string).length;
+  }
+  for (const p of rest) {
+    const size = (files[p] as string).length;
+    if (spent + size > MAX_KIT_FILE_BYTES) {
+      omitted.push(p);
+      continue;
+    }
+    out[p] = files[p] as string;
+    spent += size;
+  }
+  return { files: out, filesOmitted: omitted.sort(), filesTruncated: omitted.length > 0 };
+}
+
 export function toPortableKit(kit: PortableKit) {
+  const budgeted = budgetKitFiles(kit.files, Object.values(kit.entryPaths));
   return {
     componentCount: kit.components.length,
     // id + name + entry, in the caller's requested order — the handles a
     // destination repo needs to wire each component up.
     components: kit.components.map((c) => ({ id: c.id, name: c.name, entryPath: c.entryPath })),
     entryPaths: kit.entryPaths,
-    files: kit.files,
+    files: budgeted.files,
+    // Named, never silent: fetch these with `get_portable_code` for the component
+    // that owns them, or take a smaller set.
+    filesOmitted: budgeted.filesOmitted,
+    filesTruncated: budgeted.filesTruncated,
     externalDeps: kit.externalDeps,
     // Packages required at DIFFERENT ranges across the set. Recorded rather than
     // hidden so the caller reconciles them; each entry names every requester.

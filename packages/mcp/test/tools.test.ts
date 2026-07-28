@@ -12,7 +12,9 @@ import {
 import {
   DEFAULT_LIST_LIMIT,
   DESIGN_FIELD_IDS,
+  MAX_KIT_FILE_BYTES,
   MAX_TOKEN_USAGES,
+  budgetKitFiles,
   filterComponents,
   paginate,
   projectComponent,
@@ -857,5 +859,52 @@ describe('toPortableKit', () => {
     );
     expect(p.sourceAppFiles).toEqual([]);
     expect(p.previewProviders).toEqual([]);
+  });
+});
+
+/**
+ * A kit's file bodies are unbounded — they are every merged source file of every
+ * component in the set. Measured against a real target, TWO components produced
+ * an 86KB payload (95% of it file bodies) and the MCP client refused it outright:
+ * the agent got nothing at all from the very call the tool description tells it
+ * to prefer over N single-component calls. So the files carry a budget, and what
+ * did not fit is NAMED rather than quietly dropped.
+ */
+describe('kit file budget', () => {
+  const big = (n: number): string => 'x'.repeat(n);
+
+  it('keeps a small kit whole and says so', () => {
+    const r = budgetKitFiles({ '/a.tsx': big(100), '/b.tsx': big(100) }, ['/a.tsx']);
+    expect(r.filesTruncated).toBe(false);
+    expect(r.filesOmitted).toEqual([]);
+    expect(Object.keys(r.files).sort()).toEqual(['/a.tsx', '/b.tsx']);
+  });
+
+  it('never drops an entry file — it is the component itself', () => {
+    const r = budgetKitFiles(
+      { '/entry.tsx': big(MAX_KIT_FILE_BYTES), '/dep.tsx': big(MAX_KIT_FILE_BYTES) },
+      ['/entry.tsx'],
+    );
+    expect(r.files['/entry.tsx']).toBeDefined();
+    expect(r.filesTruncated).toBe(true);
+    expect(r.filesOmitted).toEqual(['/dep.tsx']);
+  });
+
+  it('fits as many files as the budget allows, smallest first', () => {
+    const r = budgetKitFiles(
+      { '/entry.tsx': big(10), '/small.ts': big(10), '/huge.ts': big(MAX_KIT_FILE_BYTES + 1) },
+      ['/entry.tsx'],
+    );
+    expect(Object.keys(r.files).sort()).toEqual(['/entry.tsx', '/small.ts']);
+    expect(r.filesOmitted).toEqual(['/huge.ts']);
+  });
+
+  it('stays under the budget once the entries are in', () => {
+    const files: Record<string, string> = { '/entry.tsx': big(1000) };
+    for (let i = 0; i < 200; i += 1) files[`/f${i}.ts`] = big(1000);
+    const r = budgetKitFiles(files, ['/entry.tsx']);
+    const total = Object.values(r.files).reduce((n, s) => n + s.length, 0);
+    expect(total).toBeLessThanOrEqual(MAX_KIT_FILE_BYTES);
+    expect(r.filesOmitted.length).toBeGreaterThan(0);
   });
 });
