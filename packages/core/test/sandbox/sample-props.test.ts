@@ -174,21 +174,71 @@ describe('generateSampleProps', () => {
     expect(Object.keys(out)).toHaveLength(0);
   });
 
-  it('still fills a ReactNode content prop (accepts a string) with the text placeholder', () => {
+  // A content slot names ITSELF, not the component. Filling every node prop with
+  // `descriptor.name` made a button render its own name once per slot.
+  it('names a non-children content slot after the slot, not the component', () => {
     const out = gen([
       prop({ name: 'label', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'helperText', kind: 'node', tsType: 'ReactNode' }),
       prop({ name: 'children', kind: 'node', tsType: 'ReactNode' }),
     ]);
-    expect(out).toEqual({ label: 'Widget', children: 'Widget' });
+    // Title-cased by the same `humanize` that already names string props.
+    expect(out).toEqual({ label: 'Label', helperText: 'Helper Text', children: 'Widget' });
   });
 
   it('fills a node prop whose union accepts string, but not a pure-element union', () => {
     expect(gen([prop({ name: 'title', kind: 'node', tsType: 'string | ReactElement' })]).title).toBe(
-      'Widget',
+      'Title',
     );
     expect('end' in gen([prop({ name: 'end', kind: 'node', tsType: 'ReactElement | false' })])).toBe(
       false,
     );
+  });
+
+  // Regression: `startIcon`/`endIcon`/`loadingIndicator` are `ReactNode`, so they
+  // ACCEPT a string and were filled with one — a word of text crammed into a 20×20
+  // icon box, overlapping the label. An adornment slot is a picture slot: leaving
+  // it empty shows the component's real shape; text in it never can.
+  it('leaves icon and adornment slots empty even when they accept a string', () => {
+    const out = gen([
+      prop({ name: 'startIcon', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'endIcon', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'loadingIndicator', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'startAdornment', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'clearIcon', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'children', kind: 'node', tsType: 'ReactNode' }),
+    ]);
+    expect(out).toEqual({ children: 'Widget' });
+  });
+
+  it('never repeats the component name across several node slots', () => {
+    const out = gen([
+      prop({ name: 'children', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'endIcon', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'startIcon', kind: 'node', tsType: 'ReactNode' }),
+      prop({ name: 'label', kind: 'node', tsType: 'ReactNode' }),
+    ]);
+    const named = Object.values(out).filter((v) => v === 'Widget');
+    expect(named).toHaveLength(1);
+  });
+
+  // A modal/dialog/drawer gated on `open` renders NOTHING when it is false, so a
+  // preview of one was an empty frame. The gate opens unless the author declared
+  // a default of their own.
+  it('opens a visibility-gate boolean that has no declared default', () => {
+    for (const name of ['open', 'isOpen', 'opened', 'visible', 'isVisible', 'show', 'shown', 'expanded']) {
+      expect(gen([prop({ name, kind: 'boolean', required: true })])[name]).toBe(true);
+    }
+  });
+
+  it('respects an explicit default on a visibility-gate boolean', () => {
+    expect(gen([prop({ name: 'open', kind: 'boolean', required: true, defaultValue: 'false' })]).open).toBe(false);
+  });
+
+  it('leaves a non-gate boolean false (a gate name is required, not any boolean)', () => {
+    for (const name of ['disabled', 'loading', 'checked', 'fullWidth', 'showBorder']) {
+      expect(gen([prop({ name, kind: 'boolean', required: true })])[name]).toBe(false);
+    }
   });
 
   it('leaves a required component-type prop unset ({} would render as an invalid element)', () => {

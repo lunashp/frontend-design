@@ -66,6 +66,24 @@ function __wrap(obj) {
       return __colorProxy();
     },
   });
+}
+// Keys a host may FEATURE-DETECT on the theme. Handing back a truthy proxy for
+// these would send React or MUI down a branch meant for a value that is not
+// there (a thenable theme is awaited; a toJSON is serialized), so they keep
+// answering undefined.
+const __PROBE = new Set(['then', 'toJSON', 'nodeType', 'tagName', 'asymmetricMatch', 'valueOf', 'inspect']);
+// SHALLOW guard for the theme ROOT: an existing section (palette above all) is
+// returned untouched — proxying the palette corrupts MUI's colour resolution.
+// Only a MISSING top-level section degrades to a placeholder.
+function __guardTop(theme) {
+  return new Proxy(theme, {
+    get(target, key) {
+      if (key in target) return Reflect.get(target, key);
+      if (typeof key === 'symbol') return Reflect.get(target, key);
+      if (__PROBE.has(key) || key[0] === '_' || key[0] === '$') return undefined;
+      return __colorProxy();
+    },
+  });
 }`;
 
 /**
@@ -91,13 +109,20 @@ function __wrap(obj) {
  */
 function realThemeBody(exportName: string): string {
   return (
-    `const __theme = createTheme({\n` +
+    `${PALETTE_GUARD_HELPERS}\n` +
+    `const __built = createTheme({\n` +
     `  cssVariables: true,\n` +
     `  colorSchemes: { light: { palette: (${exportName}).palette } },\n` +
     `  typography: (${exportName}).typography,\n` +
     `  shape: (${exportName}).shape,\n` +
     `  components: (${exportName}).components,\n` +
-    `});`
+    `});\n` +
+    // An app theme is routinely extended with its own top-level sections —
+    // `customShadows`, spacing scales, brand ramps. `createTheme` returns only
+    // the sections IT knows, so rebuilding silently dropped them and every
+    // `theme.customShadows.tooltip` threw. Carry them across.
+    `for (const __k of Object.keys(${exportName})) { if (!(__k in __built)) __built[__k] = (${exportName})[__k]; }\n` +
+    `const __theme = __guardTop(__built);`
   );
 }
 

@@ -59,6 +59,16 @@ Non-negotiable colour rules:
 
 - **Body text is ink.** Never a gem colour, never an accent. Glass lowers
   effective contrast; `--text-faint` is for labels only, never body copy.
+- **Every ink meets AA on every surface.** All three inks clear 4.5:1 against
+  `--bg`, `--surface`, `--surface-2` and `--surface-3`; `token-contrast.test.ts`
+  fails the build otherwise. `--text-faint` used to be a ~3:1 label grey, which
+  measured **3.40:1 on `--bg` — the app's own ground** — so an axe pass over this
+  app found 21 serious `color-contrast` nodes (folder-chip counts, the "Context
+  load" label, the props group count). A tool that ships an accessibility auditor
+  cannot fail its own audit, so faint was darkened to `#5E6A77`. The step down
+  from `--text-dim` to `--text-faint` is therefore small in contrast: the label
+  hierarchy is carried by **size, uppercase and mono**, not by fading the ink
+  below legibility.
 - **Rank colours are dot / border / tint only.** The label is ink. The four ranks
   are separated by *lightness* (a real luminance ladder), so they survive
   greyscale and colour-vision deficiency. Do not even out those lightnesses —

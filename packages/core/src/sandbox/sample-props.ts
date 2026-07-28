@@ -44,6 +44,22 @@ const NODE_ACCEPTS_STRING = /ReactNode|ReactChild/;
 // A React component/element type. JSON can't carry one, and rendering a {}
 // stub as an element throws "Element type is invalid: got object".
 const COMPONENT_TYPE = /\b(ComponentType|ElementType|FunctionComponent|ComponentClass|ReactElement|SvgIconComponent)\b|\bFC\b|\bJSX\.Element\b/;
+/**
+ * An ADORNMENT slot — a place for a picture, not for words: `startIcon`,
+ * `endIcon`, `clearIcon`, `loadingIndicator`, `startAdornment`, `avatar`.
+ * These are typed `ReactNode`, so they accept a string and used to be filled
+ * with one: a word of text crammed into a ~20×20 box, overlapping the label and
+ * making the component unreadable in the gallery. Nothing renders better here
+ * than the wrong thing, so they are left unset.
+ */
+const ADORNMENT_SLOT = /(icon|indicator|adornment|avatar|thumbnail|thumb|logo|glyph)$/i;
+/**
+ * A boolean that GATES whether the component renders at all — a modal, dialog,
+ * drawer, popover or accordion closed by default paints an empty frame, which is
+ * the one thing a design preview must not show. Opened unless the author
+ * declared a default of their own (an explicit `= false` is a decision, not a gap).
+ */
+const VISIBILITY_GATE = /^(is)?(open(ed)?|visible|shown?|expanded)$/i;
 
 /**
  * A value for a prop the control model classified as `unknown` (an object,
@@ -105,6 +121,7 @@ function valueForPropKind(prop: PropControl, descriptor: ComponentDescriptor): u
     case 'enum':
       return prop.options?.[0] ?? prop.defaultValue ?? '';
     case 'boolean':
+      if (prop.defaultValue == null && VISIBILITY_GATE.test(prop.name)) return true;
       return parseBool(prop.defaultValue);
     case 'number':
       return prop.defaultValue != null ? Number(prop.defaultValue) : 1;
@@ -141,6 +158,9 @@ export function generateSampleProps(
       // Filling it with a string makes the component throw "x is not a function";
       // skip it here so the entry builder stubs it as a real callable.
       if (FUNCTION_TYPE.test(prop.tsType)) continue;
+      // An adornment slot wants a picture. Text in it overlaps the real content,
+      // so it stays empty whatever its type says it accepts.
+      if (ADORNMENT_SLOT.test(prop.name)) continue;
       // The text placeholder is valid only where a STRING is accepted: `children`,
       // a `ReactNode`/`ReactChild` content prop, or a union with a bare `string`
       // branch. An element-only prop (`avatar`/`icon`: `ReactElement`) rejects it —
@@ -150,7 +170,12 @@ export function generateSampleProps(
         prop.name === 'children' ||
         NODE_ACCEPTS_STRING.test(prop.tsType) ||
         STRING_MEMBER.test(prop.tsType);
-      if (acceptsString) out[prop.name] = descriptor.name;
+      // `children` is the component speaking as itself, so it carries the
+      // component's name. Every OTHER slot names ITSELF — a component with a
+      // label, a title and a footer used to render its own name three times over.
+      if (acceptsString) {
+        out[prop.name] = prop.name === 'children' ? descriptor.name : humanize(prop.name);
+      }
       continue;
     }
 

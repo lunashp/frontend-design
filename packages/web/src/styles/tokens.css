@@ -32,7 +32,7 @@
   /* ---- Ink. Blue-black, never warm; carries all the text hierarchy. ---- */
   --text: #1C2530; /* blue-black ink — AA on every light surface */
   --text-dim: #55606D; /* ~5:1 on white — body-safe */
-  --text-faint: #74808D; /* ~3:1 on white — labels only, never body copy */
+  --text-faint: #5E6A77; /* labels only — AA (>=4.66:1) on every surface above */
 
   /* ---- Frosted glass. The fixed chrome; opaque fallback under each. ---- */
   --glass-bg: rgba(255, 255, 255, 0.55);

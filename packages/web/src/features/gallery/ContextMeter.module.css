@@ -81,9 +81,11 @@
   color: var(--warn);
 }
 
+/* The words already say "needs no app context" — colouring them green states the
+   same fact twice and measured 3.46:1 on the panel. Ink, per the one-channel rule. */
 .none {
   font-family: var(--font-mono);
-  color: var(--ok);
+  color: var(--text-dim);
 }
 
 .compact .track {

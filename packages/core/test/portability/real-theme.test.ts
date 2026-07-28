@@ -71,6 +71,17 @@ describe('faithful preview: real theme + messages', () => {
     expect(entry).toMatch(/colorSchemes: \{ light: \{ palette: \(__rawTheme\)\.palette \} \}/);
     // Its palette is used as-is (no guard proxy, which corrupts colour resolution).
     expect(entry).not.toMatch(/palette: __wrap\(__raw/);
+    // An app theme is routinely EXTENDED with its own top-level sections
+    // (`customShadows`, design-system scales). `createTheme` knows nothing about
+    // them, so rebuilding dropped them and every `theme.customShadows.tooltip`
+    // threw — the single largest cause of "Needs app context" on a real target.
+    // They are carried across, and anything still missing degrades to a
+    // placeholder instead of throwing.
+    expect(entry).toMatch(/if \(!\(__k in __built\)\) __built\[__k\] = \(__rawTheme\)\[__k\]/);
+    expect(entry).toMatch(/const __theme = __guardTop\(__built\)/);
+    // The top-level guard is SHALLOW: an existing section (palette above all)
+    // must pass through untouched.
+    expect(entry).toMatch(/__guardTop/);
     expect(entry).toMatch(/import __messages from/);
     expect(entry).toMatch(/messages=\{__messages\}/);
     expect(entry).toMatch(/ThemeProvider theme=\{__theme\}/);
